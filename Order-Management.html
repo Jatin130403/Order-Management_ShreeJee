@@ -1,0 +1,635 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Order Management — ShreeJee Ayucare</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* Background & glass look */
+    body{
+      background: linear-gradient(-45deg,#065f46,#047857,#10b981,#6ee7b7);
+      background-size:400% 400%;
+      animation: gradientBG 12s ease infinite;
+    }
+    @keyframes gradientBG {
+      0%{background-position:0% 50%}
+      50%{background-position:100% 50%}
+      100%{background-position:0% 50%}
+    }
+
+    .glass-card { background: rgba(255,255,255,0.18); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.2); transition: all .18s ease; }
+    .glass-card:hover { transform: translateY(-6px) scale(1.01); box-shadow: 0 18px 40px rgba(0,0,0,0.22); }
+
+    .order-open { box-shadow: 0 0 0 3px rgba(250,180,30,0.06); }
+    .status-square { width:22px; height:22px; border-radius:4px; display:inline-block; cursor:pointer; }
+    .status-square.locked { cursor: not-allowed; opacity:.55; }
+    .clickable { cursor:pointer; }
+
+    /* small responsive tweaks */
+    @media (max-width:640px){
+      .w-40{ width:150px !important; }
+    }
+  </style>
+</head>
+<body class="font-sans text-gray-800 min-h-screen">
+
+  <!-- NAV -->
+  <nav class="bg-green-900/95 text-white sticky top-0 z-50 shadow-md">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div class="flex items-center gap-3">
+        <img src="logo.jpg" alt="Logo" class="h-10 w-10 rounded-full object-cover shadow-md" onerror="this.style.display='none'">
+        <div>
+          <div class="font-semibold text-lg">ShreeJee Ayucare</div>
+          <div class="text-xs text-green-200">Tellicaller Portal</div>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-3">
+        <input id="searchInput" type="search" placeholder="Search name or phone..." class="px-3 py-2 rounded-md border bg-white text-black w-64 shadow-sm" />
+
+        <!-- Owner filter -->
+        <select id="filterOwner" class="px-2 py-2 rounded-md border bg-white text-black shadow-sm">
+          <option value="all">All Orders</option>
+          <option value="mine">My Orders</option>
+        </select>
+
+        <!-- Status filter -->
+        <select id="filterStatus" class="px-2 py-2 rounded-md border bg-white text-black shadow-sm">
+          <option value="all">All Status</option>
+          <option value="delivered">Delivered</option>
+          <option value="rto">RTO</option>
+        </select>
+
+        <input id="filterFrom" type="date" class="px-2 py-2 rounded-md border bg-white text-black shadow-sm" />
+        <input id="filterTo" type="date" class="px-2 py-2 rounded-md border bg-white text-black shadow-sm" />
+
+        <button id="btnAddOrder" class="bg-yellow-400 hover:bg-yellow-500 px-4 py-2 rounded-md font-semibold shadow">+ Add Order</button>
+        <button onclick="window.location.href='out_of_delivery.html'"
+         class="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-md shadow">
+         Out of Delivery
+        </button>
+        <button id="btnLogout" class="bg-red-500 hover:bg-red-600 px-4 py-2 rounded-md font-semibold shadow text-white">Logout</button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- MAIN -->
+  <main class="max-w-6xl mx-auto p-6">
+    <div id="ordersContainer" class="space-y-6"></div>
+    <p id="emptyMessage" class="text-center text-gray-200 mt-8 hidden">No orders found.</p>
+  </main>
+
+  <!-- Add Order Modal -->
+  <div id="modalBackdrop" class="fixed inset-0 bg-black bg-opacity-40 hidden items-center justify-center z-50">
+    <div class="bg-white rounded-lg w-full max-w-2xl mx-4 shadow-lg p-6">
+      <div class="flex justify-between items-center mb-4">
+        <h3 id="modalTitle" class="text-lg font-semibold">Add Order</h3>
+        <button id="modalClose" class="text-gray-600 hover:text-gray-900">✕</button>
+      </div>
+
+      <form id="orderForm" class="space-y-3">
+        <div class="grid grid-cols-2 gap-3">
+          <input id="firstName" class="border p-2 rounded" placeholder="First name" required />
+          <input id="lastName" class="border p-2 rounded" placeholder="Last name" />
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <input id="phone" class="border p-2 rounded" placeholder="Phone (10 digits)" required />
+          <input id="tellicaller" class="border p-2 rounded" placeholder="Order placed by (Tellicaller)" required />
+        </div>
+
+        <input id="address" class="border p-2 rounded" placeholder="Address" />
+        <div class="grid grid-cols-3 gap-3">
+          <input id="city" class="border p-2 rounded" placeholder="City" />
+          <input id="state" class="border p-2 rounded" placeholder="State" />
+          <input id="pincode" class="border p-2 rounded" placeholder="Pincode" maxlength="6" />
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <input id="amount" type="number" min="0" step="0.01" class="border p-2 rounded" placeholder="Amount" required />
+          <select id="statusSelect" class="border p-2 rounded">
+            <option value="open">Open</option>
+            <option value="dispatched">Dispatched</option>
+          </select>
+        </div>
+
+        <div class="flex justify-end gap-3 pt-2">
+          <button type="button" id="btnCancel" class="px-4 py-2 rounded border">Cancel</button>
+          <button type="submit" id="btnSaveOrder" class="px-4 py-2 rounded bg-green-700 text-white">Save Order</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Customer Detail Modal -->
+  <div id="customerBackdrop" class="fixed inset-0 bg-black bg-opacity-40 hidden items-center justify-center z-50">
+    <div class="bg-white rounded-2xl w-full max-w-4xl mx-4 shadow-2xl p-6 glass-card">
+      <div class="flex justify-between items-center mb-4">
+        <h3 id="custTitle" class="text-2xl font-bold text-green-800">Customer Details</h3>
+        <button id="custClose" class="text-gray-600 hover:text-gray-900 text-xl">✕</button>
+      </div>
+
+      <div id="customerDetails" class="space-y-6"></div>
+
+      <div class="flex justify-end mt-4">
+        <button id="custClose2" class="px-5 py-2 rounded-lg bg-red-500 text-white shadow hover:bg-red-600 transition">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" class="fixed bottom-6 right-6 bg-gray-900 text-white px-4 py-2 rounded shadow hidden"></div>
+
+  <!-- Firebase libs -->
+  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
+
+  <script>
+  /******** Firebase config (replace if needed) ********/
+  const firebaseConfig = {
+    apiKey: "AIzaSyB1wbJonjyJQDrPJWbMCVBtRolJH4HDskU",
+    authDomain: "shreejee-ayucare.firebaseapp.com",
+    databaseURL: "https://shreejee-ayucare-default-rtdb.firebaseio.com",
+    projectId: "shreejee-ayucare",
+    storageBucket: "shreejee-ayucare.firebasestorage.app",
+    messagingSenderId: "247248655859",
+    appId: "1:247248655859:web:b09bfc30ff6953aad42e86"
+  };
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.database();
+
+  /******** App state & elements ********/
+  const currentUser = JSON.parse(localStorage.getItem("currentTellicaller") || "{}");
+  if (!currentUser.name) { window.location.href = "login.html"; } // protect
+
+  const ordersRef = db.ref('oms_orders');
+  const customersRef = db.ref('oms_customers');
+
+  let ordersSnapshot = {};
+  let customersSnapshot = {};
+
+  const ordersContainer = document.getElementById('ordersContainer');
+  const emptyMessage = document.getElementById('emptyMessage');
+  const searchInput = document.getElementById('searchInput');
+  const btnAddOrder = document.getElementById('btnAddOrder');
+  const btnLogout = document.getElementById('btnLogout');
+  const modalBackdrop = document.getElementById('modalBackdrop');
+  const modalClose = document.getElementById('modalClose');
+  const orderForm = document.getElementById('orderForm');
+  const btnCancel = document.getElementById('btnCancel');
+  const toast = document.getElementById('toast');
+
+  const customerBackdrop = document.getElementById('customerBackdrop');
+  const custTitle = document.getElementById('custTitle');
+  const customerDetails = document.getElementById('customerDetails');
+  const custClose = document.getElementById('custClose');
+  const custClose2 = document.getElementById('custClose2');
+
+  const filterOwner = document.getElementById('filterOwner');
+  const filterStatus = document.getElementById('filterStatus');
+  const filterFrom = document.getElementById('filterFrom');
+  const filterTo = document.getElementById('filterTo');
+
+  // form fields
+  const fFirst = document.getElementById('firstName');
+  const fLast = document.getElementById('lastName');
+  const fPhone = document.getElementById('phone');
+  const fTellicaller = document.getElementById('tellicaller');
+  const fAddress = document.getElementById('address');
+  const fCity = document.getElementById('city');
+  const fState = document.getElementById('state');
+  const fPincode = document.getElementById('pincode');
+  const fAmount = document.getElementById('amount');
+  const fStatus = document.getElementById('statusSelect');
+
+  /******** Helpers ********/
+  function showToast(msg, t=3000){
+    toast.textContent = msg;
+    toast.classList.remove('hidden');
+    setTimeout(()=> toast.classList.add('hidden'), t);
+  }
+  function humanDate(ts){ return new Date(ts).toLocaleString(); }
+  function isToday(ts){ return new Date(ts).toDateString() === new Date().toDateString(); }
+  function isYesterday(ts){ const y=new Date(); y.setDate(y.getDate()-1); return new Date(ts).toDateString() === y.toDateString(); }
+  function generateOrderId(){ return 'ord_' + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+
+  /******** Render Orders (grouped) ********/
+  function renderOrders(filterText=''){
+    let list = Object.values(ordersSnapshot || {});
+    const q = filterText.trim().toLowerCase();
+    if (q) {
+      list = list.filter(o=>{
+        const nm = ((o.firstName||'') + ' ' + (o.lastName||'')).toLowerCase();
+        return nm.includes(q) || (o.phone||'').includes(q);
+      });
+    }
+
+    // owner filter
+    if (filterOwner.value === 'mine') {
+      list = list.filter(o => o.tellicaller === currentUser.name);
+    }
+
+    // status filter
+    if (filterStatus.value === 'delivered') {
+      list = list.filter(o => o.status === 'closed' && o.closedType === 'Delivered');
+    } else if (filterStatus.value === 'rto') {
+      list = list.filter(o => o.status === 'closed' && o.closedType === 'RTO');
+    }
+
+    // date range
+    const fromVal = filterFrom.value ? new Date(filterFrom.value).setHours(0,0,0,0) : null;
+    const toVal = filterTo.value ? new Date(filterTo.value).setHours(23,59,59,999) : null;
+    if (fromVal || toVal) {
+      list = list.filter(o => (!fromVal || o.timestamp >= fromVal) && (!toVal || o.timestamp <= toVal));
+    }
+
+    if (!list.length) {
+      ordersContainer.innerHTML = '';
+      emptyMessage.classList.remove('hidden');
+      return;
+    }
+    emptyMessage.classList.add('hidden');
+
+    // group
+    const today = [], yesterday = [], older = [];
+    list.forEach(o => {
+      if (isToday(o.timestamp)) today.push(o);
+      else if (isYesterday(o.timestamp)) yesterday.push(o);
+      else older.push(o);
+    });
+    const sortDesc = arr => arr.sort((a,b)=>b.timestamp - a.timestamp);
+
+    ordersContainer.innerHTML = '';
+
+    function createSection(title, arr) {
+      if (!arr.length) return;
+      const sec = document.createElement('div');
+      sec.className = 'glass-card rounded-xl p-4';
+      const head = document.createElement('h3');
+      head.className = 'font-semibold text-lg mb-3 text-gray-800';
+      head.textContent = title;
+      sec.appendChild(head);
+
+      arr.forEach(order => {
+        const row = document.createElement('div');
+        row.className = 'flex items-center justify-between p-3 rounded-md border mb-2 bg-white/80 shadow-sm hover:shadow-lg transition';
+        if (order.status !== 'closed') row.classList.add('order-open');
+
+        // LEFT: status square + name+phone+time
+        const left = document.createElement('div');
+        left.className = 'flex items-center gap-3';
+
+        const statusSq = document.createElement('span');
+        statusSq.className = 'status-square';
+        if (order.status === 'closed') { statusSq.style.background = '#9ca3af'; statusSq.classList.add('locked'); }
+        else if (order.status === 'open') statusSq.style.background = '#ef4444';
+        else statusSq.style.background = '#10b981';
+
+        if (order.status !== 'closed') {
+          statusSq.addEventListener('click', (e)=>{
+            e.stopPropagation();
+            toggleDispatched(order.orderId);
+          });
+        }
+        left.appendChild(statusSq);
+
+        const meta = document.createElement('div');
+        const nameDiv = document.createElement('div');
+        nameDiv.className = 'font-medium text-blue-700 hover:underline cursor-pointer';
+        nameDiv.textContent = (order.firstName||'') + ' ' + (order.lastName||'');
+        nameDiv.addEventListener('click', (ev)=>{ ev.stopPropagation(); openCustomerModal(order.phone, order.orderId); });
+
+        const phoneDiv = document.createElement('div');
+        phoneDiv.className = 'text-xs text-gray-500';
+        phoneDiv.textContent = order.phone + ' • ' + humanDate(order.timestamp);
+
+        meta.appendChild(nameDiv);
+        meta.appendChild(phoneDiv);
+        left.appendChild(meta);
+
+        // MIDDLE: aligned vertical block
+        const middle = document.createElement('div');
+        middle.className = 'flex flex-col text-sm w-40';
+        const amt = document.createElement('span'); amt.className = 'font-semibold'; amt.textContent = '₹ ' + (order.amount != null ? Number(order.amount).toFixed(2) : '0.00');
+        const tel = document.createElement('span'); tel.className = 'text-xs text-gray-600'; tel.textContent = 'By: ' + (order.tellicaller || '-');
+        middle.appendChild(amt);
+        middle.appendChild(tel);
+        if (order.status === 'closed') {
+          const st = document.createElement('span'); st.className = 'text-xs text-gray-700'; st.textContent = 'Status: ' + (order.closedType || '-');
+          middle.appendChild(st);
+        }
+
+        // RIGHT: orderId + view
+        const right = document.createElement('div');
+        right.className = 'flex gap-2 items-center';
+        const orderIdEl = document.createElement('div');
+        orderIdEl.className = 'text-xs text-gray-600';
+        orderIdEl.textContent = (order.externalOrderId && order.externalOrderId !== '') ? order.externalOrderId : 'Not Defined';
+        right.appendChild(orderIdEl);
+
+        const viewBtn = document.createElement('button');
+        viewBtn.className = 'px-2 py-1 rounded bg-blue-600 text-white text-xs';
+        viewBtn.textContent = 'View';
+        viewBtn.addEventListener('click', (ev) => { ev.stopPropagation(); openCustomerModal(order.phone, order.orderId); });
+        right.appendChild(viewBtn);
+
+        row.appendChild(left);
+        row.appendChild(middle);
+        row.appendChild(right);
+        sec.appendChild(row);
+      });
+
+      ordersContainer.appendChild(sec);
+    }
+
+    createSection('Today', sortDesc(today));
+    createSection('Yesterday', sortDesc(yesterday));
+    createSection('Older', sortDesc(older));
+  }
+
+  /******** Firebase listeners ********/
+  ordersRef.on('value', snap => {
+    ordersSnapshot = snap.val() || {};
+    renderOrders(searchInput.value);
+  });
+  customersRef.on('value', snap => {
+    customersSnapshot = snap.val() || {};
+    // customer data used when opening modal
+  });
+
+  /******** Actions ********/
+  async function toggleDispatched(orderId) {
+    const order = ordersSnapshot[orderId];
+    if (!order) return;
+    // locked if closed
+    if (order.status === 'closed') return;
+    const newStatus = (order.status === 'dispatched') ? 'open' : 'dispatched';
+    const upd = { status: newStatus };
+    if (newStatus === 'dispatched') upd.dispatchedAt = Date.now();
+    else upd.dispatchedAt = null;
+    await ordersRef.child(orderId).update(upd);
+    showToast('Order status updated');
+  }
+
+  async function saveExternalOrderId(orderId, newId) {
+    if (!newId || !newId.trim()) return;
+    await ordersRef.child(orderId).update({ externalOrderId: newId.trim(), status: 'dispatched', dispatchedAt: Date.now() });
+    showToast('External Order ID saved and order marked dispatched');
+  }
+
+  async function closeOrderWithType(orderId, type, remark='') {
+    // type is "Delivered" or "RTO"
+    if (!orderId) return;
+    if (type === 'RTO' && (!remark || !remark.trim())) { alert('Remark is required for RTO'); return; }
+    const updates = { status: 'closed', closedType: type, deliveredAt: Date.now() };
+    if (type === 'RTO') updates.remark = remark.trim();
+    await ordersRef.child(orderId).update(updates);
+    showToast('Order closed as ' + type);
+  }
+
+  /******** Add Order modal handling ********/
+  btnAddOrder.addEventListener('click', ()=>{
+    orderForm.reset();
+    fTellicaller.value = currentUser.name || '';
+    fStatus.value = 'open';
+    modalBackdrop.style.display = 'flex';
+    modalBackdrop.classList.remove('hidden');
+  });
+  modalClose.addEventListener('click', ()=>{
+    modalBackdrop.style.display = 'none';
+    modalBackdrop.classList.add('hidden');
+  });
+  btnCancel.addEventListener('click', ()=>{
+    modalBackdrop.style.display = 'none';
+    modalBackdrop.classList.add('hidden');
+  });
+
+  orderForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const firstName = fFirst.value.trim();
+    const lastName = fLast.value.trim();
+    const phone = fPhone.value.trim();
+    const tellicaller = fTellicaller.value.trim() || currentUser.name;
+    const address = fAddress.value.trim();
+    const city = fCity.value.trim();
+    const state = fState.value.trim();
+    const pincode = fPincode.value.trim();
+    const amount = parseFloat(fAmount.value) || 0;
+    const status = fStatus.value;
+
+    if (!firstName || !phone || isNaN(amount)) { alert('Please fill required fields: First name, Phone, Amount'); return; }
+
+    const orderId = generateOrderId();
+    const payload = {
+      orderId,
+      firstName, lastName, phone, tellicaller,
+      address, city, state, pincode,
+      amount, status,
+      externalOrderId: '',
+      timestamp: Date.now()
+    };
+
+    try {
+      // save order
+      await ordersRef.child(orderId).set(payload);
+
+      // update/create customer node
+      const phoneKey = phone;
+      const existing = customersSnapshot[phoneKey] || null;
+      if (existing) {
+        // add order id to customer's orders map and update basic fields
+        const ordersMap = existing.orders || {};
+        ordersMap[orderId] = true;
+        const updateObj = {
+          firstName: existing.firstName || firstName,
+          lastName: existing.lastName || lastName,
+          address: existing.address || address,
+          city: existing.city || city,
+          state: existing.state || state,
+          pincode: existing.pincode || pincode,
+          tellicallerLast: tellicaller,
+          orders: ordersMap
+        };
+        await customersRef.child(phoneKey).update(updateObj);
+      } else {
+        const newCust = {
+          firstName, lastName, phone,
+          address, city, state, pincode,
+          tellicallerLast: tellicaller,
+          createdAt: Date.now(),
+          orders: {}
+        };
+        newCust.orders[orderId] = true;
+        await customersRef.child(phoneKey).set(newCust);
+      }
+
+      modalBackdrop.style.display = 'none';
+      modalBackdrop.classList.add('hidden');
+      showToast('Order saved');
+    } catch (err) {
+      console.error(err);
+      alert('Error saving order: ' + (err.message || err));
+    }
+  });
+
+  /******** Customer modal: professional info + order history ********/
+  async function openCustomerModal(phone, highlightOrderId = null) {
+    const customer = customersSnapshot[phone] || null;
+    if (!customer) {
+      alert('No customer record found for phone: ' + phone);
+      return;
+    }
+    custTitle.textContent = `Customer — ${customer.firstName || ''} ${customer.lastName || ''}`;
+    customerDetails.innerHTML = '';
+
+    // Customer Info Card
+    const infoCard = document.createElement('div');
+    infoCard.className = 'p-5 rounded-xl bg-gradient-to-r from-green-50 to-white shadow-md';
+    infoCard.innerHTML = `
+      <h4 class="font-semibold text-lg mb-3 text-green-800">👤 Customer Information</h4>
+      <div class="grid grid-cols-2 gap-3 text-sm text-gray-700">
+        <div><b>First Name:</b> ${customer.firstName || '-'}</div>
+        <div><b>Last Name:</b> ${customer.lastName || '-'}</div>
+        <div><b>Phone:</b> ${customer.phone || '-'}</div>
+        <div><b>City:</b> ${customer.city || '-'}</div>
+        <div><b>State:</b> ${customer.state || '-'}</div>
+        <div><b>Pincode:</b> ${customer.pincode || '-'}</div>
+        <div class="col-span-2"><b>Address:</b> ${customer.address || '-'}</div>
+      </div>
+    `;
+    customerDetails.appendChild(infoCard);
+
+    // Order History Card
+    const histCard = document.createElement('div');
+    histCard.className = 'p-5 rounded-xl bg-white shadow-md';
+    histCard.innerHTML = `<h4 class="font-semibold text-lg mb-3 text-gray-800">📦 Order History</h4>`;
+
+    const histList = document.createElement('div');
+    histList.className = 'space-y-3';
+
+    // collect orders for this phone
+    const ordersArr = Object.values(ordersSnapshot || {}).filter(o => o.phone === phone).sort((a,b)=>b.timestamp - a.timestamp);
+
+    if (!ordersArr.length) {
+      histList.innerHTML = `<div class="text-gray-500 italic">No orders yet.</div>`;
+    } else {
+      ordersArr.forEach(order => {
+        const wrap = document.createElement('div');
+        wrap.className = 'p-4 border rounded-lg bg-white hover:shadow-md transition';
+
+        // header row
+        const header = document.createElement('div');
+        header.className = 'flex justify-between items-center mb-2';
+        const left = document.createElement('div');
+        left.innerHTML = `<div class="font-semibold text-lg">₹ ${order.amount != null ? Number(order.amount).toFixed(2) : '0.00'}</div>
+                          <div class="text-xs text-gray-500">${humanDate(order.timestamp)}</div>`;
+        const right = document.createElement('div');
+        const statusLabel = order.status === 'closed' ? (order.closedType || 'Closed') : (order.status || 'Open');
+        // color-coded small badge
+        const badge = document.createElement('span');
+        badge.className = 'px-2 py-0.5 rounded text-xs text-white';
+        if (order.status === 'closed') {
+          if (order.closedType === 'Delivered') badge.style.background = '#10b981';
+          else badge.style.background = '#ef4444';
+        } else if (order.status === 'dispatched') badge.style.background = '#0ea5a4';
+        else badge.style.background = '#f97316';
+        badge.textContent = statusLabel;
+        right.appendChild(badge);
+
+        header.appendChild(left);
+        header.appendChild(right);
+        wrap.appendChild(header);
+
+        // body
+        const body = document.createElement('div');
+        body.className = 'text-sm text-gray-700';
+        body.innerHTML = `<div><b>Tellicaller:</b> ${order.tellicaller || '-'}</div>
+                          <div><b>Order ID:</b> ${(order.externalOrderId && order.externalOrderId !== '') ? order.externalOrderId : 'Not Defined'}</div>
+                          <div class="text-xs text-gray-500 mt-1"><b>DB ID:</b> ${order.orderId}</div>`;
+        wrap.appendChild(body);
+
+        // actions if order not closed
+        if (order.status !== 'closed') {
+          const actions = document.createElement('div');
+          actions.className = 'mt-3 flex flex-wrap gap-2 items-center';
+
+          const idInp = document.createElement('input');
+          idInp.placeholder = 'External Order ID';
+          idInp.className = 'border p-2 rounded text-sm';
+          idInp.value = order.externalOrderId || '';
+
+          const saveIdBtn = document.createElement('button');
+          saveIdBtn.className = 'px-3 py-1 bg-green-600 text-white rounded text-sm';
+          saveIdBtn.textContent = 'Save ID';
+          saveIdBtn.addEventListener('click', ()=>{ if (idInp.value && idInp.value.trim()) saveExternalOrderId(order.orderId, idInp.value.trim()); });
+
+          const deliveredBtn = document.createElement('button');
+          deliveredBtn.className = 'px-3 py-1 bg-blue-600 text-white rounded text-sm';
+          deliveredBtn.textContent = 'Mark Delivered';
+          deliveredBtn.addEventListener('click', ()=> closeOrderWithType(order.orderId, 'Delivered'));
+
+          const rtoInp = document.createElement('input');
+          rtoInp.placeholder = 'Remark for RTO';
+          rtoInp.className = 'border p-2 rounded text-sm';
+
+          const rtoBtn = document.createElement('button');
+          rtoBtn.className = 'px-3 py-1 bg-red-600 text-white rounded text-sm';
+          rtoBtn.textContent = 'Mark RTO';
+          rtoBtn.addEventListener('click', ()=> {
+            if (!rtoInp.value || !rtoInp.value.trim()) { alert('Please enter remark for RTO'); return; }
+            closeOrderWithType(order.orderId, 'RTO', rtoInp.value.trim());
+          });
+
+          actions.appendChild(idInp);
+          actions.appendChild(saveIdBtn);
+          actions.appendChild(deliveredBtn);
+          actions.appendChild(rtoInp);
+          actions.appendChild(rtoBtn);
+
+          wrap.appendChild(actions);
+        } else {
+          // if closed and RTO show remark
+          if (order.closedType === 'RTO') {
+            const remarkDiv = document.createElement('div');
+            remarkDiv.className = 'mt-2 text-sm text-red-700';
+            remarkDiv.innerHTML = `<b>RTO Remark:</b> ${order.remark || '-'}`;
+            wrap.appendChild(remarkDiv);
+          }
+        }
+
+        histList.appendChild(wrap);
+      });
+    }
+
+    histCard.appendChild(histList);
+    customerDetails.appendChild(histCard);
+
+    // show modal
+    customerBackdrop.style.display = 'flex';
+    customerBackdrop.classList.remove('hidden');
+  }
+
+  custClose.addEventListener('click', ()=>{ customerBackdrop.style.display = 'none'; customerBackdrop.classList.add('hidden'); });
+  custClose2.addEventListener('click', ()=>{ customerBackdrop.style.display = 'none'; customerBackdrop.classList.add('hidden'); });
+
+  /******** Filters, search & listeners ********/
+  searchInput.addEventListener('input', ()=> renderOrders(searchInput.value));
+  filterOwner.addEventListener('change', ()=> renderOrders(searchInput.value));
+  filterStatus.addEventListener('change', ()=> renderOrders(searchInput.value));
+  filterFrom.addEventListener('change', ()=> renderOrders(searchInput.value));
+  filterTo.addEventListener('change', ()=> renderOrders(searchInput.value));
+
+  /******** Logout ********/
+  btnLogout.addEventListener('click', ()=> {
+    localStorage.removeItem('currentTellicaller');
+    // optional: force navigation to login
+    window.location.href = 'login.html';
+  });
+
+  // initial render (in case snapshots are loaded already)
+  // snapshot listeners above will call renderOrders when data arrives
+
+  </script>
+</body>
+</html>

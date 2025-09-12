@@ -54,7 +54,7 @@
   const db = firebase.database();
 
   const currentUser = JSON.parse(localStorage.getItem("currentTellicaller") || "{}");
-  if (!currentUser.name) { window.location.href = "login.html"; }
+  if (!currentUser.name) { window.location.href = "index.html"; }
 
   const ordersRef = db.ref('oms_orders');
   let firebaseOrders = {};
@@ -177,3 +177,4 @@ async function fetchDelhiveryOOD() {
   </script>
 </body>
 </html>
+

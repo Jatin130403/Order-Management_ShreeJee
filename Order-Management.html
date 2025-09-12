@@ -161,7 +161,7 @@
 
   /******** App state & elements ********/
   const currentUser = JSON.parse(localStorage.getItem("currentTellicaller") || "{}");
-  if (!currentUser.name) { window.location.href = "login.html"; } // protect
+  if (!currentUser.name) { window.location.href = "index.html"; } // protect
 
   const ordersRef = db.ref('oms_orders');
   const customersRef = db.ref('oms_customers');
@@ -624,9 +624,10 @@
   btnLogout.addEventListener('click', ()=> {
     localStorage.removeItem('currentTellicaller');
     // optional: force navigation to login
-    window.location.href = 'login.html';
+    window.location.href = 'index.html';
   });
 
+  
   // initial render (in case snapshots are loaded already)
   // snapshot listeners above will call renderOrders when data arrives
 

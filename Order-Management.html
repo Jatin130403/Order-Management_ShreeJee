@@ -101,9 +101,10 @@
 
         <button id="btnAddOrder" class="bg-yellow-400 hover:bg-yellow-500 px-4 py-2 rounded-md font-semibold shadow">+ Add Order</button>
         <button onclick="window.location.href='out_of_delivery.html'"
-         class="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-md shadow">
-         Out of Delivery
-        </button>
+       class="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-md shadow flex items-center gap-2">
+       Out of Delivery 
+       <span id="oodBadge" class="ml-1 bg-red-500 text-white rounded-full px-2 py-0.5 text-xs">0</span>
+      </button>
         <button id="btnLogout" class="bg-red-500 hover:bg-red-600 px-4 py-2 rounded-md font-semibold shadow text-white">Logout</button>
       </div>
     </div>
@@ -248,6 +249,15 @@
   function isToday(ts){ return new Date(ts).toDateString() === new Date().toDateString(); }
   function isYesterday(ts){ const y=new Date(); y.setDate(y.getDate()-1); return new Date(ts).toDateString() === y.toDateString(); }
   function generateOrderId(){ return 'ord_' + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+  function updateOodBadge(){
+  const badge = document.getElementById('oodBadge');
+  if (!badge) return;
+  const count = Object.values(ordersSnapshot||{}).filter(o =>
+    o.oodStatus === 'today' && (!o.oodRemark || !['Agree','Not Picked','Refused'].includes(o.oodRemark))
+  ).length;
+  badge.textContent = count;
+}
+
 
   /******** Render Orders (grouped) ********/
   function renderOrders(filterText=''){
@@ -387,6 +397,7 @@
   ordersRef.on('value', snap => {
     ordersSnapshot = snap.val() || {};
     renderOrders(searchInput.value);
+    updateOodBadge();
   });
   customersRef.on('value', snap => {
     customersSnapshot = snap.val() || {};
@@ -621,6 +632,21 @@
           actions.appendChild(deliveredBtn);
           actions.appendChild(rtoInp);
           actions.appendChild(rtoBtn);
+          // ✅ NEW OOD BUTTON
+          const oodBtn = document.createElement('button');
+          oodBtn.className = 'px-3 py-1 bg-purple-600 text-white rounded text-sm';
+          oodBtn.textContent = 'Mark OOD';
+          oodBtn.addEventListener('click', async ()=> {
+            await ordersRef.child(order.orderId).update({
+              oodStatus: "today",
+              oodMarkedAt: Date.now(),
+              oodTellicaller: currentUser.name,
+              oodRemark: "Call"
+            });
+            showToast("Order marked Out Of Delivery");
+          });
+          actions.appendChild(oodBtn);
+    
 
           wrap.appendChild(actions);
         } else {
@@ -715,4 +741,3 @@ document.addEventListener('DOMContentLoaded', function(){
 </script>
 </body>
 </html>
-

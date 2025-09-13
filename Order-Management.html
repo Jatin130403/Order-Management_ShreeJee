@@ -30,7 +30,42 @@
     @media (max-width:640px){
       .w-40{ width:150px !important; }
     }
-  </style>
+  
+/* --- Mobile improvements & close-button fixes --- */
+@media (max-width: 640px) {
+  /* make nav controls stack and search full width */
+  #searchInput { width: 100% !important; margin-bottom: 0.5rem; }
+  #navControls { width: 100%; display: flex; flex-direction: column; gap: .5rem; align-items: stretch; }
+  #navControls > * { width: 100%; }
+  .w-40 { width: auto !important; }
+}
+/* modal inner wrapper for relative positioning */
+.modal-inner { position: relative; }
+/* larger, always-visible close buttons with hit-area */
+.modal-close-btn {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  background: rgba(255,255,255,0.95);
+  border-radius: 9999px;
+  padding: 6px 10px;
+  font-size: 1.15rem;
+  line-height: 1;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.12);
+  border: 1px solid rgba(0,0,0,0.06);
+  z-index: 60;
+  cursor: pointer;
+}
+/* ensure modal content scrolls on small screens */
+#modalBackdrop > div, #customerBackdrop > div { max-height: 90vh; overflow: auto; }
+/* mobile hamburger */
+#navHamburger { display: none; }
+@media (max-width: 640px) {
+  #navHamburger { display:inline-flex; align-items:center; justify-content:center; padding:.4rem; background:transparent; border-radius:6px; border:1px solid rgba(255,255,255,0.06); }
+  #navControls.collapsed { display: none !important; }
+}
+
+</style>
 </head>
 <body class="font-sans text-gray-800 min-h-screen">
 
@@ -45,7 +80,7 @@
         </div>
       </div>
 
-      <div class="flex flex-wrap items-center gap-3">
+      <div id="navControls" class="flex flex-wrap items-center gap-3">
         <input id="searchInput" type="search" placeholder="Search name or phone..." class="px-3 py-2 rounded-md border bg-white text-black w-64 shadow-sm" />
 
         <!-- Owner filter -->
@@ -82,10 +117,10 @@
 
   <!-- Add Order Modal -->
   <div id="modalBackdrop" class="fixed inset-0 bg-black bg-opacity-40 hidden items-center justify-center z-50">
-    <div class="bg-white rounded-lg w-full max-w-2xl mx-4 shadow-lg p-6">
+    <div class="bg-white rounded-lg w-full max-w-2xl mx-4 shadow-lg p-6 modal-inner">
       <div class="flex justify-between items-center mb-4">
         <h3 id="modalTitle" class="text-lg font-semibold">Add Order</h3>
-        <button id="modalClose" class="text-gray-600 hover:text-gray-900">✕</button>
+        <button id="modalClose" class="modal-close-btn text-gray-600 hover:text-gray-900" aria-label="Close add order modal">✕</button>
       </div>
 
       <form id="orderForm" class="space-y-3">
@@ -124,10 +159,10 @@
 
   <!-- Customer Detail Modal -->
   <div id="customerBackdrop" class="fixed inset-0 bg-black bg-opacity-40 hidden items-center justify-center z-50">
-    <div class="bg-white rounded-2xl w-full max-w-4xl mx-4 shadow-2xl p-6 glass-card">
+    <div class="bg-white rounded-2xl w-full max-w-4xl mx-4 shadow-2xl p-6 glass-card modal-inner">
       <div class="flex justify-between items-center mb-4">
         <h3 id="custTitle" class="text-2xl font-bold text-green-800">Customer Details</h3>
-        <button id="custClose" class="text-gray-600 hover:text-gray-900 text-xl">✕</button>
+        <button id="custClose" class="modal-close-btn text-gray-600 hover:text-gray-900 text-xl" aria-label="Close customer details">✕</button>
       </div>
 
       <div id="customerDetails" class="space-y-6"></div>
@@ -631,6 +666,52 @@
   // initial render (in case snapshots are loaded already)
   // snapshot listeners above will call renderOrders when data arrives
 
-  </script>
+  
+
+/* Mobile nav hamburger & behavior */
+document.addEventListener('DOMContentLoaded', function(){
+  const nav = document.querySelector('nav');
+  if (!nav) return;
+  // Create hamburger
+  const hamburger = document.createElement('button');
+  hamburger.id = 'navHamburger';
+  hamburger.innerHTML = '&#9776;';
+  hamburger.setAttribute('aria-label','Toggle menu');
+  hamburger.className = 'sm:hidden text-white';
+  // insert hamburger after logo block (first child of nav inner container)
+  const wrapper = nav.querySelector('.max-w-7xl');
+  if (wrapper) {
+    const left = wrapper.querySelector('div');
+    if (left && left.parentNode) {
+      left.parentNode.insertBefore(hamburger, left.nextSibling);
+    } else {
+      wrapper.insertBefore(hamburger, wrapper.firstChild);
+    }
+  }
+  const navControls = document.getElementById('navControls');
+  if (!navControls) return;
+  // default collapsed on mobile
+  function updateCollapsed() {
+    if (window.innerWidth <= 640) navControls.classList.add('collapsed');
+    else navControls.classList.remove('collapsed');
+  }
+  updateCollapsed();
+  window.addEventListener('resize', updateCollapsed);
+  hamburger.addEventListener('click', function(){ navControls.classList.toggle('collapsed'); });
+
+  // Improve tap targets for close buttons (add title)
+  const modalClose = document.getElementById('modalClose');
+  const custClose = document.getElementById('custClose');
+  if (modalClose) modalClose.setAttribute('title','Close');
+  if (custClose) custClose.setAttribute('title','Close');
+
+  // Ensure modals dismiss when backdrop clicked (but not when clicking inside)
+  const modalBackdrop = document.getElementById('modalBackdrop');
+  const customerBackdrop = document.getElementById('customerBackdrop');
+  if (modalBackdrop) modalBackdrop.addEventListener('click', function(e){ if (e.target === modalBackdrop) { modalBackdrop.style.display='none'; modalBackdrop.classList.add('hidden'); } });
+  if (customerBackdrop) customerBackdrop.addEventListener('click', function(e){ if (e.target === customerBackdrop) { customerBackdrop.style.display='none'; customerBackdrop.classList.add('hidden'); } });
+});
+
+</script>
 </body>
 </html>

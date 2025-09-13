@@ -8,6 +8,10 @@
   <style>
     .order-card { transition: transform 0.2s ease, box-shadow 0.2s ease; }
     .order-card:hover { transform: translateY(-4px); box-shadow: 0 6px 15px rgba(0,0,0,0.15); }
+    .btn-blue { background:#2563eb; color:white; }
+    .btn-green { background:#16a34a; color:white; }
+    .btn-yellow { background:#ca8a04; color:white; }
+    .btn-red { background:#dc2626; color:white; }
   </style>
 </head>
 <body class="bg-gray-50 min-h-screen text-gray-800">
@@ -21,6 +25,9 @@
           <option value="mine">My OOD Orders</option>
           <option value="all">All OOD Orders</option>
         </select>
+        <button id="pendingBtn" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-md shadow">
+          Pending <span id="pendingCount" class="ml-2 bg-red-500 text-white rounded-full px-2 py-0.5 text-xs">0</span>
+        </button>
         <button onclick="window.location.href='Order-Management.html'" 
           class="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-md shadow">
           Back to Dashboard
@@ -33,6 +40,12 @@
   <main class="max-w-6xl mx-auto p-6">
     <div id="oodContainer" class="space-y-4"></div>
     <p id="noOrdersMsg" class="text-center text-gray-500 mt-10 hidden">No Out Of Delivery Currently</p>
+
+    <!-- Pending Section -->
+    <div id="pendingSection" class="hidden mt-10">
+      <h2 class="text-xl font-bold text-purple-700 mb-4">📌 Pending OOD Follow-ups</h2>
+      <div id="pendingContainer" class="space-y-4"></div>
+    </div>
   </main>
 
   <!-- Firebase -->
@@ -40,7 +53,6 @@
   <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
 
   <script>
-  /********** FIREBASE CONFIG **********/
   const firebaseConfig = {
     apiKey: "AIzaSyB1wbJonjyJQDrPJWbMCVBtRolJH4HDskU",
     authDomain: "shreejee-ayucare.firebaseapp.com",
@@ -53,130 +65,176 @@
   firebase.initializeApp(firebaseConfig);
   const db = firebase.database();
 
+  function showToast(msg, t=2500){
+    const td = document.getElementById('toast');
+    if (!td) return;
+    td.textContent = msg;
+    td.style.display = 'block';
+    setTimeout(()=> td.style.display = 'none', t);
+  }
+
+  
   const currentUser = JSON.parse(localStorage.getItem("currentTellicaller") || "{}");
   if (!currentUser.name) { window.location.href = "index.html"; }
 
   const ordersRef = db.ref('oms_orders');
   let firebaseOrders = {};
 
-  // Replace with your API token
-  const DELHIVERY_API_TOKEN = "bc6c05ed06aff67320b493201ee928db907104f8";
-  const API_URL = "https://track.delhivery.com/api/v1/packages/json/";
+  function isToday(ts){ return new Date(ts).toDateString() === new Date().toDateString(); }
 
-async function fetchDelhiveryOOD() {
-  try {
-    // Collect all externalOrderId from Firebase
-    const ids = Object.values(firebaseOrders)
-      .filter(o => o.externalOrderId && o.status === "dispatched")
-      .map(o => o.externalOrderId);
-
-    // If no ids in firebase, still call API with dummy to get today's OOD
-    const queryIds = ids.length ? ids.join(",") : "";
-
-    const res = await fetch(API_URL + "?ref_ids=" + queryIds, {
-      headers: { "Authorization": "Token " + DELHIVERY_API_TOKEN }
-    });
-
-    const data = await res.json();
-    const shipments = data?.ShipmentData || [];
-
-    // Filter only Out for Delivery (OOD) within 24h
-    const now = Date.now();
-    const oneDay = 24 * 60 * 60 * 1000;
-    return shipments.filter(s => {
-      const status = s.Shipment?.Status?.Status || "";
-      const time = new Date(s.Shipment?.Status?.StatusDateTime).getTime();
-      return status.toLowerCase().includes("out for delivery") && (now - time <= oneDay);
-    });
-  } catch (err) {
-    console.error("Delhivery API error", err);
-    return [];
+  function getBtnClass(val){
+    if (val==="Agree") return "btn-green";
+    if (val==="Not Picked") return "btn-yellow";
+    if (val==="Refused") return "btn-red";
+    return "btn-blue";
   }
-}
 
-
-  function renderOOD(oodOrders) {
+  function renderOOD() {
     const filterVal = document.getElementById("filterOOD").value;
-    let filtered = oodOrders;
-
-    if (filterVal === "mine") {
-  filtered = filtered.filter(o => {
-    const fbOrder = firebaseOrders[o?.Shipment?.OrderID];
-    // If order exists in Firebase → filter by tellicaller
-    if (fbOrder) return fbOrder.tellicaller === currentUser.name;
-    // If not in Firebase → skip from "mine"
-    return false;
-  });
-}
-
-
     const container = document.getElementById("oodContainer");
     const noMsg = document.getElementById("noOrdersMsg");
     container.innerHTML = "";
 
-    if (!filtered.length) {
-      noMsg.classList.remove("hidden");
-      return;
+    let todayOOD = Object.values(firebaseOrders).filter(o =>
+      o.oodStatus === "today" && o.oodMarkedAt && isToday(o.oodMarkedAt)
+    );
+    if (filterVal === "mine") {
+      todayOOD = todayOOD.filter(o => o.oodTellicaller === currentUser.name);
     }
+
+    if (!todayOOD.length) { noMsg.classList.remove("hidden"); return; }
     noMsg.classList.add("hidden");
+    
+    const pendingCount = document.getElementById("pendingCount");
+    if (pendingCount) {
+      const pendings = Object.values(firebaseOrders).filter(o =>
+        o.oodStatus === "today" && o.oodMarkedAt && !isToday(o.oodMarkedAt)
+      );
+      pendingCount.textContent = pendings.length;
+    }
+    
 
-    filtered.forEach(o => {
-      const s = o.Shipment;
-      const orderId = s.OrderID;
-      const fbOrder = firebaseOrders[orderId] || {};
-
-      // If Delivered -> mark in Firebase
-      if (s.Status.Status === "Delivered" && fbOrder.orderId) {
-        ordersRef.child(fbOrder.orderId).update({
-          status: "closed",
-          closedType: "Delivered",
-          deliveredAt: Date.now()
-        });
-      }
-
+    todayOOD.forEach(o => {
       const card = document.createElement("div");
       card.className = "order-card bg-white p-4 rounded shadow border";
+
+      const btn = document.createElement("button");
+      btn.textContent = o.oodRemark || "Call";
+      btn.className = "px-3 py-1 rounded " + getBtnClass(o.oodRemark);
+
+      btn.addEventListener("click", ()=> {
+        // show inline editor (select + Save/Cancel) instead of auto-saving on change
+        const editor = document.createElement('div');
+        editor.className = 'flex items-center gap-2 mt-3';
+
+        const select = document.createElement('select');
+        select.className = 'border p-1 rounded text-sm';
+        ["Agree","Not Picked","Refused"].forEach(opt=>{
+          const option = document.createElement('option');
+          option.value = opt; option.textContent = opt;
+          if ((o.oodRemark||"") === opt) option.selected = true;
+          select.appendChild(option);
+        });
+
+        const saveBtn = document.createElement('button');
+        saveBtn.className = 'px-3 py-1 bg-green-600 text-white rounded text-sm';
+        saveBtn.textContent = 'Save';
+
+        const cancelBtn = document.createElement('button');
+        cancelBtn.className = 'px-3 py-1 bg-gray-300 text-black rounded text-sm';
+        cancelBtn.textContent = 'Cancel';
+
+        editor.appendChild(select);
+        editor.appendChild(saveBtn);
+        editor.appendChild(cancelBtn);
+
+        // hide original button and show editor
+        btn.style.display = 'none';
+        card.appendChild(editor);
+
+        // Save handler - update only when user clicks Save
+        saveBtn.addEventListener('click', async ()=> {
+          const remark = select.value;
+          try {
+            await ordersRef.child(o.orderId).update({ oodRemark: remark, oodLastUpdated: Date.now() });
+            // small toast feedback (function declared below)
+            if (typeof showToast === 'function') showToast('OOD remark saved');
+          } catch (err) {
+            console.error(err);
+            alert('Error saving remark');
+          }
+          // cleanup and update UI
+          editor.remove();
+          btn.textContent = remark;
+          btn.className = 'px-3 py-1 rounded ' + getBtnClass(remark);
+          btn.style.display = '';
+          // re-render to update pending count and lists (listener will also pick up changes)
+          renderOOD();
+        });
+
+        // Cancel handler - revert UI
+        cancelBtn.addEventListener('click', ()=> {
+          editor.remove();
+          btn.style.display = '';
+        });
+      });
 
       card.innerHTML = `
         <div class="flex justify-between">
           <div>
-            <h2 class="font-semibold text-lg text-blue-700">${s.Consignee?.Name || "Receiver"}</h2>
-            <p class="text-sm text-gray-600">Order ID: ${orderId || "Not Defined"}</p>
-            <p class="text-sm text-gray-600">Waybill: ${s.Waybill || "Not Defined"}</p>
-            <p class="text-sm text-gray-600">Status: ${s.Status.Status}</p>
-            <p class="text-sm text-gray-600">Last Update: ${s.Status.StatusDateTime}</p>
-          </div>
-          <div class="text-sm text-gray-500">
-            <p><b>Amount:</b> ₹${fbOrder.amount || "Not Defined"}</p>
-            <p><b>Phone:</b> ${fbOrder.phone || "Not Defined"}</p>
-            <p><b>Tellicaller:</b> ${fbOrder.tellicaller || "Not Defined"}</p>
-            <p><b>City:</b> ${fbOrder.city || "Not Defined"}</p>
-            <p><b>State:</b> ${fbOrder.state || "Not Defined"}</p>
+            <h2 class="font-semibold text-lg text-blue-700">${o.firstName||""} ${o.lastName||""}</h2>
+            <p class="text-sm text-gray-600">Phone: ${o.phone}</p>
+            <p class="text-sm text-gray-600">Amount: ₹${o.amount}</p>
+            <p class="text-sm text-gray-600">Tellicaller: ${o.oodTellicaller}</p>
           </div>
         </div>
       `;
+      card.appendChild(btn);
       container.appendChild(card);
     });
   }
 
-  async function loadOOD() {
-    const ood = await fetchDelhiveryOOD();
-    renderOOD(ood);
+  function renderPending() {
+    const sec = document.getElementById("pendingSection");
+    const cont = document.getElementById("pendingContainer");
+    cont.innerHTML = "";
+    sec.classList.remove("hidden");
+
+    let pendings = Object.values(firebaseOrders).filter(o =>
+      o.oodStatus === "today" && o.oodMarkedAt && !isToday(o.oodMarkedAt)
+    );
+
+    if (!pendings.length) {
+      cont.innerHTML = `<p class="text-gray-500">No pending OOD follow-ups.</p>`;
+      return;
+    }
+
+    
+    const pendingCount = document.getElementById("pendingCount");
+    if (pendingCount) pendingCount.textContent = pendings.length;
+    
+    pendings.forEach(o => {
+      const card = document.createElement("div");
+      card.className = "order-card bg-white p-4 rounded shadow border";
+      card.innerHTML = `
+        <h2 class="font-semibold text-lg text-blue-700">${o.firstName||""} ${o.lastName||""}</h2>
+        <p class="text-sm">Phone: ${o.phone}</p>
+        <p class="text-sm">Tellicaller: ${o.oodTellicaller}</p>
+        <p class="text-sm">Remark: ${o.oodRemark||"Pending"}</p>
+      `;
+      cont.appendChild(card);
+    });
   }
 
-  // Firebase Orders Snapshot
-  ordersRef.on("value", snap => {
+  ordersRef.on("value", snap=>{
     firebaseOrders = snap.val() || {};
-    loadOOD();
+    renderOOD();
   });
 
-  // Auto refresh every 2 min
-  setInterval(loadOOD, 120000);
-
-  document.getElementById("filterOOD").onchange = loadOOD;
+  document.getElementById("filterOOD").onchange = renderOOD;
+  document.getElementById("pendingBtn").onclick = renderPending;
   </script>
+
+  <div id="toast" style="position:fixed;bottom:1rem;right:1rem; background:rgba(0,0,0,0.85); color:#fff; padding:8px 12px; border-radius:8px; display:none; z-index:9999;"></div>
 </body>
 </html>
-
-
-

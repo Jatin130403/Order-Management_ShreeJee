@@ -296,14 +296,14 @@
     }
     emptyMessage.classList.add('hidden');
 
-    // group
-    const today = [], yesterday = [], older = [];
+    // group orders by date
+    const groups = {};
     list.forEach(o => {
-      if (isToday(o.timestamp)) today.push(o);
-      else if (isYesterday(o.timestamp)) yesterday.push(o);
-      else older.push(o);
+      const d = new Date(o.timestamp);
+      const key = d.toLocaleDateString();
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(o);
     });
-    const sortDesc = arr => arr.sort((a,b)=>b.timestamp - a.timestamp);
 
     ordersContainer.innerHTML = '';
 
@@ -316,7 +316,7 @@
       head.textContent = title;
       sec.appendChild(head);
 
-      arr.forEach(order => {
+      arr.sort((a,b)=>b.timestamp - a.timestamp).forEach(order => {
         const row = document.createElement('div');
         row.className = 'flex items-center justify-between p-3 rounded-md border mb-2 bg-white/80 shadow-sm hover:shadow-lg transition';
         if (order.status !== 'closed') row.classList.add('order-open');
@@ -388,9 +388,9 @@
       ordersContainer.appendChild(sec);
     }
 
-    createSection('Today', sortDesc(today));
-    createSection('Yesterday', sortDesc(yesterday));
-    createSection('Older', sortDesc(older));
+    Object.keys(groups).sort((a,b)=> new Date(b) - new Date(a)).forEach(dateStr => {
+      createSection(dateStr, groups[dateStr]);
+    });
   }
 
   /******** Firebase listeners ********/

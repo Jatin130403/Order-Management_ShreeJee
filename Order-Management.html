@@ -75,7 +75,7 @@
       <div class="flex items-center gap-3">
         <img src="logo.jpg" alt="Logo" class="h-10 w-10 rounded-full object-cover shadow-md" onerror="this.style.display='none'">
         <div>
-          <div class="font-semibold text-lg">ShreeJee Ayucare</div>
+          <div class="font-semibold text-lg">ShreeJee Ayucare</div><div id="welcomeMsg" class="text-sm text-yellow-300 font-bold"></div>
           <div class="text-xs text-green-200">Tellecaller Portal</div>
         </div>
       </div>
@@ -132,7 +132,7 @@
 
         <div class="grid grid-cols-2 gap-3">
           <input id="phone" class="border p-2 rounded" placeholder="Phone (10 digits)" required />
-          <input id="tellicaller" class="border p-2 rounded" placeholder="Order placed by (Tellicaller)" required />
+          <input id="tellecaller" class="border p-2 rounded" placeholder="Order placed by (Tellicaller)" required />
         </div>
 
         <input id="address" class="border p-2 rounded" placeholder="Address" />
@@ -319,7 +319,17 @@
       arr.sort((a,b)=>b.timestamp - a.timestamp).forEach(order => {
         const row = document.createElement('div');
         row.className = 'flex items-center justify-between p-3 rounded-md border mb-2 bg-white/80 shadow-sm hover:shadow-lg transition';
-        if (order.status !== 'closed') row.classList.add('order-open');
+        if (order.status !== 'closed') {
+          row.classList.add('order-open');
+        } else {
+          if (order.closedType === 'Delivered') {
+            row.classList.add('bg-green-200','border-2','border-green-600');
+            row.innerHTML = '<span class="text-green-800 font-bold text-lg mr-2">✅ Delivered</span>' + row.innerHTML;
+          } else if (order.closedType === 'RTO') {
+            row.classList.add('bg-red-200','border-2','border-red-600');
+            row.innerHTML = '<span class="text-red-800 font-bold text-lg mr-2">❌ RTO</span>' + row.innerHTML;
+          }
+        }
 
         // LEFT: status square + name+phone+time
         const left = document.createElement('div');
@@ -512,7 +522,7 @@
 
       modalBackdrop.style.display = 'none';
       modalBackdrop.classList.add('hidden');
-      showToast('Order saved');
+      showToast('Order saved'); afterOrderPlaced();
     } catch (err) {
       console.error(err);
       alert('Error saving order: ' + (err.message || err));
@@ -590,7 +600,7 @@
         // body
         const body = document.createElement('div');
         body.className = 'text-sm text-gray-700';
-        body.innerHTML = `<div><b>Tellicaller:</b> ${order.tellicaller || '-'}</div>
+        body.innerHTML = `<div><b>Tellecaller:</b> ${order.tellicaller || '-'}</div>
                           <div><b>Order ID:</b> ${(order.externalOrderId && order.externalOrderId !== '') ? order.externalOrderId : 'Not Defined'}</div>
                           <div class="text-xs text-gray-500 mt-1"><b>DB ID:</b> ${order.orderId}</div>`;
         wrap.appendChild(body);
@@ -689,6 +699,89 @@
   });
 
   
+  
+  // Navbar Welcome
+  const welcomeMsg = document.getElementById('welcomeMsg');
+  if (currentUser && currentUser.name) {
+    welcomeMsg.textContent = `Welcome ${currentUser.name}`;
+  }
+
+  // Track orders placed today by tellecaller
+  function checkDailyMilestones() {
+    const todayStart = new Date(); todayStart.setHours(0,0,0,0);
+    const todayEnd = new Date(); todayEnd.setHours(23,59,59,999);
+
+    const todayOrders = Object.values(ordersSnapshot||{}).filter(o =>
+      o.tellicaller === currentUser.name &&
+      o.timestamp >= todayStart.getTime() && o.timestamp <= todayEnd.getTime()
+    );
+
+    const count = todayOrders.length;
+    if (count === 1) {
+      showToast(`🎉 Great Work ${currentUser.name}!`);
+    } else if (count === 3) {
+      showToast(`💧 Pani Pi Lijye ${currentUser.name}, Thak Gye Honge.`);
+    } else if (count === 5) {
+      launchFireworks();
+      showToast(`🥟 Momos Khyega?? ${currentUser.name}`);
+    }
+  }
+
+  // Fireworks animation
+  function launchFireworks() {
+    const fw = document.createElement('div');
+    fw.style.position = 'fixed';
+    fw.style.top = 0; fw.style.left = 0;
+    fw.style.width = '100%'; fw.style.height = '100%';
+    fw.style.pointerEvents = 'none';
+    fw.style.zIndex = 9999;
+    fw.innerHTML = '<canvas id="fwCanvas"></canvas>';
+    document.body.appendChild(fw);
+
+    const canvas = document.getElementById('fwCanvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    const particles = [];
+    for (let i=0;i<100;i++) {
+      particles.push({
+        x: canvas.width/2,
+        y: canvas.height/2,
+        angle: Math.random()*2*Math.PI,
+        speed: Math.random()*5+2,
+        radius: Math.random()*3+2,
+        color: `hsl(${Math.random()*360},100%,50%)`,
+        life: 100
+      });
+    }
+
+    function animate() {
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      particles.forEach(p => {
+        p.x += Math.cos(p.angle)*p.speed;
+        p.y += Math.sin(p.angle)*p.speed;
+        p.life--;
+        ctx.beginPath();
+        ctx.arc(p.x,p.y,p.radius,0,2*Math.PI);
+        ctx.fillStyle = p.color;
+        ctx.fill();
+      });
+      if (particles.some(p=>p.life>0)) {
+        requestAnimationFrame(animate);
+      } else {
+        fw.remove();
+      }
+    }
+    animate();
+    setTimeout(()=>fw.remove(),4000);
+  }
+
+  // Hook into order creation success
+  async function afterOrderPlaced() {
+    checkDailyMilestones();
+  }
+
   // initial render (in case snapshots are loaded already)
   // snapshot listeners above will call renderOrders when data arrives
 

@@ -108,7 +108,7 @@
     const pendingCount = document.getElementById("pendingCount");
     if (pendingCount) {
       const pendings = Object.values(firebaseOrders).filter(o =>
-        o.oodStatus === "today" && o.oodMarkedAt && !isToday(o.oodMarkedAt)
+        o.oodStatus === "today" && o.oodMarkedAt && !isToday(o.oodMarkedAt) && o.status !== 'closed'
       );
       pendingCount.textContent = pendings.length;
     }
@@ -190,10 +190,75 @@
         </div>
       `;
       card.appendChild(btn);
+      // Show closed orders with status label
+      if (o.status === 'closed') {
+        const statusDiv = document.createElement('div');
+        statusDiv.className = 'mt-2 text-sm font-semibold';
+        statusDiv.textContent = 'Status: ' + (o.closedType || 'Closed');
+        if (o.closedType === 'Delivered') {
+          statusDiv.classList.add('text-green-600');
+        } else if (o.closedType === 'RTO') {
+          statusDiv.classList.add('text-red-600');
+        }
+        card.appendChild(statusDiv);
+      }
+    
+      
+      if (o.status !== 'closed') {
+if (o.status !== 'closed') {
+const actions = document.createElement("div");
+      actions.className = "mt-3 flex gap-2";
+
+      const delBtn = document.createElement("button");
+      delBtn.className = "px-3 py-1 bg-blue-600 text-white rounded text-sm";
+      delBtn.textContent = "Mark Delivered";
+      delBtn.addEventListener("click", ()=> closeOrderWithType(o.orderId, 'Delivered'));
+
+      const rtoInput = document.createElement("input");
+      rtoInput.placeholder = "RTO Remark";
+      rtoInput.className = "border p-1 rounded text-sm";
+
+      const rtoBtn = document.createElement("button");
+      rtoBtn.className = "px-3 py-1 bg-red-600 text-white rounded text-sm";
+      rtoBtn.textContent = "Mark RTO";
+      rtoBtn.addEventListener("click", ()=> {
+        if (!rtoInput.value || !rtoInput.value.trim()) { alert('Please enter remark for RTO'); return; }
+        closeOrderWithType(o.orderId, 'RTO', rtoInput.value.trim());
+      });
+
+      actions.appendChild(delBtn);
+      actions.appendChild(rtoInput);
+      actions.appendChild(rtoBtn);
+      card.appendChild(actions);
+}
+}
+    
+      
+      if (o.status === 'closed') {
+        card.classList.add('border-2');
+        if (o.closedType === 'Delivered') {
+          card.classList.add('bg-gradient-to-r','from-green-50','to-green-100','border-green-600');
+        } else if (o.closedType === 'RTO') {
+          card.classList.add('bg-gradient-to-r','from-red-50','to-red-100','border-red-600');
+        }
+      }
+    
       container.appendChild(card);
     });
   }
 
+  
+  async function closeOrderWithType(orderId, type, remark='') {
+    if (!orderId) return;
+    if (type === 'RTO' && (!remark || !remark.trim())) { alert('Remark is required for RTO'); return; }
+    const updates = { status: 'closed', closedType: type, deliveredAt: Date.now() };
+    if (type === 'RTO') updates.remark = remark.trim();
+    await ordersRef.child(orderId).update(updates);
+    showToast('Order closed as ' + type);
+    renderOOD();
+    renderPending();
+  }
+    
   function renderPending() {
     const sec = document.getElementById("pendingSection");
     const cont = document.getElementById("pendingContainer");
@@ -201,7 +266,7 @@
     sec.classList.remove("hidden");
 
     let pendings = Object.values(firebaseOrders).filter(o =>
-      o.oodStatus === "today" && o.oodMarkedAt && !isToday(o.oodMarkedAt)
+      o.oodStatus === "today" && o.oodMarkedAt && !isToday(o.oodMarkedAt) && o.status !== 'closed'
     );
 
     if (!pendings.length) {
@@ -222,6 +287,34 @@
         <p class="text-sm">Tellicaller: ${o.oodTellicaller}</p>
         <p class="text-sm">Remark: ${o.oodRemark||"Pending"}</p>
       `;
+      
+      if (o.status !== 'closed') {
+const actions = document.createElement("div");
+      actions.className = "mt-3 flex gap-2";
+
+      const delBtn = document.createElement("button");
+      delBtn.className = "px-3 py-1 bg-blue-600 text-white rounded text-sm";
+      delBtn.textContent = "Mark Delivered";
+      delBtn.addEventListener("click", ()=> closeOrderWithType(o.orderId, 'Delivered'));
+
+      const rtoInput = document.createElement("input");
+      rtoInput.placeholder = "RTO Remark";
+      rtoInput.className = "border p-1 rounded text-sm";
+
+      const rtoBtn = document.createElement("button");
+      rtoBtn.className = "px-3 py-1 bg-red-600 text-white rounded text-sm";
+      rtoBtn.textContent = "Mark RTO";
+      rtoBtn.addEventListener("click", ()=> {
+        if (!rtoInput.value || !rtoInput.value.trim()) { alert('Please enter remark for RTO'); return; }
+        closeOrderWithType(o.orderId, 'RTO', rtoInput.value.trim());
+      });
+
+      actions.appendChild(delBtn);
+      actions.appendChild(rtoInput);
+      actions.appendChild(rtoBtn);
+      card.appendChild(actions);
+}
+    
       cont.appendChild(card);
     });
   }

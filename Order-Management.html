@@ -539,6 +539,7 @@
   }
 
   /******** Add Order modal handling ********/
+  document.addEventListener("DOMContentLoaded", function() {
   btnAddOrder.addEventListener('click', ()=>{
     orderForm.reset();
     fTellicaller.value = currentUser.name || '';
@@ -554,8 +555,72 @@
     modalBackdrop.style.display = 'none';
     modalBackdrop.classList.add('hidden');
   });
-
   orderForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const firstName = fFirst.value.trim();
+    const lastName = fLast.value.trim();
+    const phone = fPhone.value.trim();
+    const tellicaller = fTellicaller.value.trim() || currentUser.name;
+    const address = fAddress.value.trim();
+    const city = fCity.value.trim();
+    const state = fState.value.trim();
+    const pincode = fPincode.value.trim();
+    const amount = parseFloat(fAmount.value) || 0;
+    const status = fStatus.value;
+
+    if (!firstName || !phone || isNaN(amount)) { alert('Please fill required fields: First name, Phone, Amount'); return; }
+
+    const orderId = generateOrderId();
+    const payload = {
+      orderId,
+      firstName, lastName, phone, tellicaller,
+      address, city, state, pincode,
+      amount, status,
+      externalOrderId: '',
+      timestamp: Date.now()
+    };
+
+    try {
+      await ordersRef.child(orderId).set(payload);
+
+      const phoneKey = phone;
+      const existing = customersSnapshot[phoneKey] || null;
+      if (existing) {
+        const ordersMap = existing.orders || {};
+        ordersMap[orderId] = true;
+        const updateObj = {
+          firstName: existing.firstName || firstName,
+          lastName: existing.lastName || lastName,
+          address: existing.address || address,
+          city: existing.city || city,
+          state: existing.state || state,
+          pincode: existing.pincode || pincode,
+          tellicallerLast: tellicaller,
+          orders: ordersMap
+        };
+        await customersRef.child(phoneKey).update(updateObj);
+      } else {
+        const newCust = {
+          firstName, lastName, phone,
+          address, city, state, pincode,
+          tellicallerLast: tellicaller,
+          createdAt: Date.now(),
+          orders: {}
+        };
+        newCust.orders[orderId] = true;
+        await customersRef.child(phoneKey).set(newCust);
+      }
+
+      modalBackdrop.style.display = 'none';
+      modalBackdrop.classList.add('hidden');
+      showToast('Order saved');
+      try{ afterOrderPlaced(); }catch(e){ console.error(e); }
+    } catch (err) {
+      console.error(err);
+      alert('Error saving order: ' + (err.message || err));
+    }
+  });
+});('submit', async (e) => {
     e.preventDefault();
     const firstName = fFirst.value.trim();
     const lastName = fLast.value.trim();

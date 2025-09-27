@@ -1,0 +1,391 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Scheduled Orders — ShreeJee Ayucare</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body{
+      background: linear-gradient(-45deg,#065f46,#047857,#10b981,#6ee7b7);
+      background-size:400% 400%;
+      animation: gradientBG 12s ease infinite;
+      min-height:100vh;
+    }
+    @keyframes gradientBG {
+      0%{background-position:0% 50%}
+      50%{background-position:100% 50%}
+      100%{background-position:0% 50%}
+    }
+    .glass-card { background: rgba(255,255,255,0.18); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.12); }
+    .modal-close-btn { position: absolute; top: .5rem; right: .5rem; background: rgba(255,255,255,0.95); border-radius:9999px; padding:6px 8px; cursor:pointer; }
+  </style>
+</head>
+<body class="font-sans text-gray-800">
+
+  <!-- NAV (lighter copy for consistency) -->
+  <nav class="bg-green-900/95 text-white sticky top-0 z-50 shadow-md">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <img src="logo.jpg" alt="Logo" class="h-10 w-10 rounded-full object-cover shadow-md" onerror="this.style.display='none'">
+        <div>
+          <div class="font-semibold text-lg">ShreeJee Ayucare</div>
+          <div id="welcomeMsg" class="text-sm text-yellow-300 font-bold"></div>
+        </div>
+      </div>
+      <div class="flex items-center gap-3">
+        <button onclick="window.location.href='Order-Management.html'" class="bg-yellow-400 px-4 py-2 rounded">Back</button>
+        <button id="btnLogout" class="bg-red-500 text-white px-4 py-2 rounded">Logout</button>
+      </div>
+    </div>
+  </nav>
+
+  <main class="max-w-6xl mx-auto p-6">
+    <h2 class="text-2xl font-semibold mb-4 text-white">My Scheduled Orders</h2>
+    <div id="scheduleContainer" class="space-y-4"></div>
+
+    <!-- Edit Modal -->
+    <div id="editBackdrop" class="fixed inset-0 bg-black bg-opacity-40 hidden items-center justify-center z-50">
+      <div class="bg-white rounded-lg w-full max-w-2xl mx-4 shadow-lg p-6 modal-inner relative">
+        <button id="editClose" class="modal-close-btn">✕</button>
+        <h3 class="text-lg font-semibold mb-3">Edit Scheduled Order</h3>
+        <form id="editForm" class="space-y-3">
+          <div class="grid grid-cols-2 gap-3">
+            <input id="e_firstName" class="border p-2 rounded" placeholder="First name" required />
+            <input id="e_lastName" class="border p-2 rounded" placeholder="Last name" />
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <input id="e_phone" class="border p-2 rounded" placeholder="Phone (10 digits)" required />
+            <input id="e_tellicaller" class="border p-2 rounded" placeholder="Order placed by (Tellicaller)" required />
+          </div>
+          <input id="e_address" class="border p-2 rounded" placeholder="Address" />
+          <div class="grid grid-cols-3 gap-3">
+            <input id="e_city" class="border p-2 rounded" placeholder="City" />
+            <input id="e_state" class="border p-2 rounded" placeholder="State" />
+            <input id="e_pincode" class="border p-2 rounded" placeholder="Pincode" maxlength="6" />
+          </div>
+          <div class="grid grid-cols-3 gap-3">
+            <input id="e_amount" type="number" min="0" step="0.01" class="border p-2 rounded" placeholder="Amount" required />
+            <select id="e_status" class="border p-2 rounded">
+              <option value="open">Open</option>
+              <option value="dispatched">Dispatched</option>
+            </select>
+            <input id="e_scheduledDate" type="date" class="border p-2 rounded" />
+          </div>
+
+          <div class="flex justify-end gap-3 pt-2">
+            <button type="button" id="btnPlaceNow" class="px-4 py-2 rounded bg-green-600 text-white">Place Now</button>
+            <button type="button" id="btnCancelSched" class="px-4 py-2 rounded bg-red-500 text-white">Cancel</button>
+            <button type="submit" id="btnSaveEdit" class="px-4 py-2 rounded bg-blue-600 text-white">Save</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </main>
+
+  <!-- firebase -->
+  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyB1wbJonjyJQDrPJWbMCVBtRolJH4HDskU",
+      authDomain: "shreejee-ayucare.firebaseapp.com",
+      databaseURL: "https://shreejee-ayucare-default-rtdb.firebaseio.com",
+      projectId: "shreejee-ayucare",
+      storageBucket: "shreejee-ayucare.firebasestorage.app",
+      messagingSenderId: "247248655859",
+      appId: "1:247248655859:web:b09bfc30ff6953aad42e86"
+    };
+    if (!firebase.apps || !firebase.apps.length) {
+      firebase.initializeApp(firebaseConfig);
+    }
+    const db = firebase.database();
+    const scheduleRef = db.ref('oms_schedule');
+    const ordersRef = db.ref('oms_orders');
+    const customersRef = db.ref('oms_customers');
+
+    const currentUser = JSON.parse(localStorage.getItem("currentTellicaller") || "{}");
+    if (!currentUser.name) { window.location.href = "index.html"; }
+
+    const scheduleContainer = document.getElementById('scheduleContainer');
+    const editBackdrop = document.getElementById('editBackdrop');
+    const editClose = document.getElementById('editClose');
+    const editForm = document.getElementById('editForm');
+
+    const eFirst = document.getElementById('e_firstName');
+    const eLast = document.getElementById('e_lastName');
+    const ePhone = document.getElementById('e_phone');
+    const eTellicaller = document.getElementById('e_tellicaller');
+    const eAddress = document.getElementById('e_address');
+    const eCity = document.getElementById('e_city');
+    const eState = document.getElementById('e_state');
+    const ePincode = document.getElementById('e_pincode');
+    const eAmount = document.getElementById('e_amount');
+    const eStatus = document.getElementById('e_status');
+    const eScheduledDate = document.getElementById('e_scheduledDate');
+
+    let scheduleSnapshot = {};
+    let editing = { dateKey: null, orderId: null };
+
+    function humanDate(ts){ return new Date(ts).toLocaleString(); }
+    function todayKeyString(d = new Date()) { return d.toISOString().split('T')[0]; }
+    function generateOrderId(){ return 'ord_' + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+
+    function renderSchedule(data) {
+      scheduleContainer.innerHTML = '';
+      const dates = Object.keys(data || {}).sort();
+      if (!dates.length) {
+        scheduleContainer.innerHTML = '<div class="text-white/80 italic">No scheduled orders found.</div>';
+        return;
+      }
+      dates.forEach(dateKey => {
+        const dayBlock = document.createElement('div');
+        dayBlock.className = 'glass-card p-4 rounded-xl';
+        const header = document.createElement('div');
+        header.className = 'flex items-center justify-between mb-3';
+        header.innerHTML = `<div class="font-semibold text-lg text-white">${new Date(dateKey).toDateString()}</div>
+                            <div class="text-sm text-white/80">${dateKey}</div>`;
+        dayBlock.appendChild(header);
+
+        const ordersForDay = data[dateKey] || {};
+        Object.keys(ordersForDay).sort().forEach(orderId => {
+          const order = ordersForDay[orderId];
+          const card = document.createElement('div');
+          card.className = 'bg-white p-3 rounded-lg mb-3 flex items-center justify-between shadow-sm';
+          const left = document.createElement('div');
+          left.innerHTML = `<div class="font-medium">${order.firstName || '-'} ${order.lastName || ''}</div>
+                            <div class="text-xs text-gray-600">${order.phone || ''} • ₹${order.amount != null ? Number(order.amount).toFixed(2) : '0.00'}</div>
+                            <div class="text-xs text-gray-500">By: ${order.tellicaller || '-'}</div>`;
+
+          const right = document.createElement('div');
+          right.className = 'flex gap-2 items-center';
+          // only allow edit/cancel for own scheduled orders
+          const isOwner = (order.tellicaller === currentUser.name);
+          const editBtn = document.createElement('button');
+          editBtn.textContent = 'Edit';
+          editBtn.className = 'px-3 py-1 bg-blue-600 text-white rounded text-sm';
+          editBtn.disabled = !isOwner;
+          editBtn.addEventListener('click', ()=> openEditModal(dateKey, orderId, order));
+
+          const cancelBtn = document.createElement('button');
+          cancelBtn.textContent = 'Cancel';
+          cancelBtn.className = 'px-3 py-1 bg-red-500 text-white rounded text-sm';
+          cancelBtn.disabled = !isOwner;
+          cancelBtn.addEventListener('click', ()=> cancelScheduledOrder(dateKey, orderId, order));
+
+          const placeNow = document.createElement('button');
+          placeNow.textContent = 'Place Now';
+          placeNow.className = 'px-3 py-1 bg-green-600 text-white rounded text-sm';
+          placeNow.disabled = !isOwner;
+          placeNow.addEventListener('click', ()=> moveScheduledOrderToOrders(dateKey, orderId, order));
+
+          right.appendChild(editBtn);
+          right.appendChild(cancelBtn);
+          right.appendChild(placeNow);
+
+          card.appendChild(left);
+          card.appendChild(right);
+          dayBlock.appendChild(card);
+        });
+
+        scheduleContainer.appendChild(dayBlock);
+      });
+    }
+
+    // open edit modal and populate
+    function openEditModal(dateKey, orderId, order) {
+      editing = { dateKey, orderId };
+      eFirst.value = order.firstName || '';
+      eLast.value = order.lastName || '';
+      ePhone.value = order.phone || '';
+      eTellicaller.value = order.tellicaller || '';
+      eAddress.value = order.address || '';
+      eCity.value = order.city || '';
+      eState.value = order.state || '';
+      ePincode.value = order.pincode || '';
+      eAmount.value = order.amount || '';
+      eStatus.value = order.status || 'open';
+      eScheduledDate.value = order.scheduledDate || dateKey || todayKeyString();
+      editBackdrop.style.display = 'flex';
+      editBackdrop.classList.remove('hidden');
+    }
+
+    editClose.addEventListener('click', ()=>{ editBackdrop.style.display = 'none'; editBackdrop.classList.add('hidden'); });
+
+    // cancel scheduled order
+    async function cancelScheduledOrder(dateKey, orderId, order) {
+      if (!confirm('Cancel this scheduled order?')) return;
+      try {
+        await scheduleRef.child(dateKey).child(orderId).remove();
+        // remove from customer's scheduledOrders map
+        const phone = order.phone;
+        if (phone) {
+          const snap = await customersRef.child(phone).once('value');
+          const cust = snap.val() || null;
+          if (cust && cust.scheduledOrders && cust.scheduledOrders[orderId]) {
+            const updated = cust.scheduledOrders;
+            delete updated[orderId];
+            await customersRef.child(phone).update({ scheduledOrders: updated });
+          }
+        }
+        alert('Scheduled order cancelled');
+      } catch(err) {
+        console.error(err);
+        alert('Error cancelling scheduled order');
+      }
+    }
+
+    // move a scheduled order to live orders immediately
+    async function moveScheduledOrderToOrders(dateKey, orderId, order) {
+      try {
+        // avoid duplicates
+        const existingOrder = await ordersRef.child(order.orderId).once('value');
+        if (existingOrder.exists()) {
+          // it already exists in live orders - just remove scheduled node
+          await scheduleRef.child(dateKey).child(orderId).remove();
+          alert('Order already exists in live orders; schedule removed.');
+          return;
+        }
+        const newPayload = Object.assign({}, order);
+        newPayload.timestamp = Date.now();
+        newPayload.status = order.status || 'open';
+        await ordersRef.child(order.orderId).set(newPayload);
+        // update customer: remove scheduledOrders entry, add to orders
+        const phone = order.phone;
+        if (phone) {
+          const snap = await customersRef.child(phone).once('value');
+          const cust = snap.val() || null;
+          if (cust) {
+            const ordersMap = cust.orders || {};
+            ordersMap[order.orderId] = true;
+            const scheduledMap = cust.scheduledOrders || {};
+            if (scheduledMap && scheduledMap[order.orderId]) delete scheduledMap[order.orderId];
+            await customersRef.child(phone).update({ orders: ordersMap, scheduledOrders: scheduledMap, tellicallerLast: order.tellicaller });
+          } else {
+            const newCust = {
+              firstName: order.firstName || '',
+              lastName: order.lastName || '',
+              phone: order.phone || '',
+              address: order.address || '',
+              city: order.city || '',
+              state: order.state || '',
+              pincode: order.pincode || '',
+              tellicallerLast: order.tellicaller || '',
+              createdAt: Date.now(),
+              orders: {}
+            };
+            newCust.orders[order.orderId] = true;
+            await customersRef.child(phone).set(newCust);
+          }
+        }
+        // remove scheduled node
+        await scheduleRef.child(dateKey).child(orderId).remove();
+        alert('Scheduled order placed as live order.');
+      } catch(err) {
+        console.error(err);
+        alert('Error placing scheduled order');
+      }
+    }
+
+    // Save edited scheduled order (may change date, details)
+    editForm.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      if (!editing || !editing.orderId || !editing.dateKey) { alert('No order selected'); return; }
+      const orderId = editing.orderId;
+      const oldDateKey = editing.dateKey;
+      const updated = {
+        orderId,
+        firstName: eFirst.value.trim(),
+        lastName: eLast.value.trim(),
+        phone: ePhone.value.trim(),
+        tellicaller: eTellicaller.value.trim(),
+        address: eAddress.value.trim(),
+        city: eCity.value.trim(),
+        state: eState.value.trim(),
+        pincode: ePincode.value.trim(),
+        amount: parseFloat(eAmount.value) || 0,
+        status: eStatus.value,
+        scheduledDate: eScheduledDate.value || oldDateKey,
+        scheduledAt: Date.now()
+      };
+      try {
+        const newDateKey = updated.scheduledDate;
+        if (newDateKey === todayKeyString()) {
+          // place now
+          await moveScheduledOrderToOrders(oldDateKey, orderId, updated);
+        } else {
+          // if date changed, move node to new date key
+          await scheduleRef.child(newDateKey).child(orderId).set(updated);
+          // remove old
+          if (oldDateKey !== newDateKey) await scheduleRef.child(oldDateKey).child(orderId).remove();
+          // update customer's scheduledOrders mapping
+          const phone = updated.phone;
+          if (phone) {
+            const snap = await customersRef.child(phone).once('value');
+            const cust = snap.val() || null;
+            if (cust) {
+              const scheduledMap = cust.scheduledOrders || {};
+              scheduledMap[orderId] = newDateKey;
+              await customersRef.child(phone).update({ scheduledOrders: scheduledMap, tellicallerLast: updated.tellicaller });
+            }
+          }
+          alert('Scheduled order updated');
+        }
+        editBackdrop.style.display = 'none';
+        editBackdrop.classList.add('hidden');
+      } catch(err) {
+        console.error(err);
+        alert('Error updating scheduled order');
+      }
+    });
+
+    // "Place Now" button in edit modal
+    document.getElementById('btnPlaceNow').addEventListener('click', async ()=>{
+      if (!editing || !editing.orderId || !editing.dateKey) return;
+      try {
+        const snap = await scheduleRef.child(editing.dateKey).child(editing.orderId).once('value');
+        if (!snap.exists()) { alert('Scheduled order not found'); return; }
+        const order = snap.val();
+        await moveScheduledOrderToOrders(editing.dateKey, editing.orderId, order);
+        editBackdrop.style.display = 'none';
+        editBackdrop.classList.add('hidden');
+      } catch(err) { console.error(err); alert('Error placing order now'); }
+    });
+
+    // cancel from modal
+    document.getElementById('btnCancelSched').addEventListener('click', async ()=>{
+      if (!editing || !editing.orderId || !editing.dateKey) return;
+      if (!confirm('Cancel this scheduled order?')) return;
+      try {
+        const snap = await scheduleRef.child(editing.dateKey).child(editing.orderId).once('value');
+        const order = snap.val();
+        await scheduleRef.child(editing.dateKey).child(editing.orderId).remove();
+        if (order && order.phone) {
+          const custSnap = await customersRef.child(order.phone).once('value');
+          const cust = custSnap.val() || null;
+          if (cust && cust.scheduledOrders && cust.scheduledOrders[editing.orderId]) {
+            const updated = cust.scheduledOrders;
+            delete updated[editing.orderId];
+            await customersRef.child(order.phone).update({ scheduledOrders: updated });
+          }
+        }
+        editBackdrop.style.display = 'none';
+        editBackdrop.classList.add('hidden');
+        alert('Scheduled order cancelled');
+      } catch(err) { console.error(err); alert('Error cancelling scheduled order'); }
+    });
+
+    // listen for changes and re-render
+    scheduleRef.on('value', snap=>{
+      scheduleSnapshot = snap.val() || {};
+      renderSchedule(scheduleSnapshot);
+    });
+
+    // logout handler
+    document.getElementById('btnLogout').addEventListener('click', ()=> {
+      localStorage.removeItem('currentTellicaller');
+      window.location.href = 'index.html';
+    });
+  </script>
+</body>
+</html>

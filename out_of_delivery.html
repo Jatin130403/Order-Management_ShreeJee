@@ -99,8 +99,8 @@
       o.oodStatus === "today" && o.oodMarkedAt && isToday(o.oodMarkedAt)
     );
     if (filterVal === "mine") {
-      todayOOD = todayOOD.filter(o => o.oodTellicaller === currentUser.name);
-    }
+  todayOOD = todayOOD.filter(o => o.tellicaller === currentUser.name);
+}
 
     if (!todayOOD.length) { noMsg.classList.remove("hidden"); return; }
     noMsg.classList.add("hidden");
@@ -185,7 +185,7 @@
             <h2 class="font-semibold text-lg text-blue-700">${o.firstName||""} ${o.lastName||""}</h2>
             <p class="text-sm text-gray-600">Phone: ${o.phone}</p>
             <p class="text-sm text-gray-600">Amount: ₹${o.amount}</p>
-            <p class="text-sm text-gray-600">Tellicaller: ${o.oodTellicaller}</p>
+            <p class="text-sm text-gray-600">Tellecaller: ${o.tellicaller}</p>
           </div>
         </div>
       `;
@@ -284,7 +284,8 @@ const actions = document.createElement("div");
       card.innerHTML = `
         <h2 class="font-semibold text-lg text-blue-700">${o.firstName||""} ${o.lastName||""}</h2>
         <p class="text-sm">Phone: ${o.phone}</p>
-        <p class="text-sm">Tellicaller: ${o.oodTellicaller}</p>
+        <p class="text-sm">Tellecaller: ${o.tellicaller}</p>
+
         <p class="text-sm">Remark: ${o.oodRemark||"Pending"}</p>
       `;
       

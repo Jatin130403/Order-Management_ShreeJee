@@ -146,7 +146,9 @@
         </div>
 
         <div class="grid grid-cols-3 gap-3">
-          <input id="amount" type="number" min="0" step="0.01" class="border p-2 rounded" placeholder="Amount" required />
+          <input id="perPrice" type="number" min="0" step="0.01" class="border p-2 rounded" placeholder="Per Price (Single Piece)" required />
+          <input id="quantity" type="number" min="1" step="1" class="border p-2 rounded" placeholder="Quantity" value="1" required />
+          <input id="amount" type="number" min="0" step="0.01" class="border p-2 rounded" placeholder="Total Amount" required readonly />
           <select id="statusSelect" class="border p-2 rounded">
             <option value="open">Open</option>
             <option value="dispatched">Dispatched</option>
@@ -250,6 +252,23 @@
   const fAmount = document.getElementById('amount');
   const fStatus = document.getElementById('statusSelect');
   const fScheduledDate = document.getElementById('scheduledDate'); // NEW
+
+  const fPerPrice = document.getElementById('perPrice');
+  const fQuantity = document.getElementById('quantity');
+
+  function updateAmountFromInputs() {
+    const per = parseFloat(fPerPrice.value) || 0;
+    const qty = parseInt(fQuantity.value) || 1;
+    const total = per * qty;
+    // keep two decimal places
+    fAmount.value = total.toFixed(2);
+  }
+
+  // attach listeners so amount updates when perPrice or quantity changes
+  if (fPerPrice) fPerPrice.addEventListener('input', updateAmountFromInputs);
+  if (fQuantity) fQuantity.addEventListener('input', updateAmountFromInputs);
+  // initialize amount on load
+  try { updateAmountFromInputs(); } catch(e) {}
 
   /******** Helpers ********/
   function showToast(msg, t=3000){
@@ -510,6 +529,19 @@
   /******** Firebase listeners ********/
   ordersRef.on('value', snap => {
     ordersSnapshot = snap.val() || {};
+    // normalize older orders that may be missing quantity/perPrice (backwards-compat)
+    Object.keys(ordersSnapshot).forEach(k => {
+      const o = ordersSnapshot[k] || {};
+      if (!('quantity' in o)) o.quantity = 1;
+      if (!('perPrice' in o)) {
+        const q = o.quantity || 1;
+        o.perPrice = (o.amount && q ? parseFloat((o.amount / q).toFixed(2)) : 0);
+      }
+      // ensure amount is consistent with perPrice * quantity
+      o.amount = parseFloat(((o.perPrice || 0) * (o.quantity || 1)).toFixed(2));
+      ordersSnapshot[k] = o;
+    });
+
     renderOrders(searchInput.value);
     updateOodBadge();
     try{ checkDailyMilestones(); }catch(e){}
@@ -547,6 +579,9 @@
 
         // create order payload for live orders (preserve info, but set timestamp to now)
         const orderPayload = Object.assign({}, scheduled);
+        // ensure backward-compat defaults for orders that predate quantity/perPrice
+        if (!('quantity' in orderPayload)) orderPayload.quantity = 1;
+        if (!('perPrice' in orderPayload)) orderPayload.perPrice = orderPayload.amount ? parseFloat((orderPayload.amount / orderPayload.quantity).toFixed(2)) : 0;
         orderPayload.timestamp = Date.now();
         orderPayload.status = scheduled.status || 'open';
         orderPayload.externalOrderId = scheduled.externalOrderId || '';
@@ -668,7 +703,9 @@
     const city = fCity.value.trim();
     const state = fState.value.trim();
     const pincode = fPincode.value.trim();
-    const amount = parseFloat(fAmount.value) || 0;
+    const perPrice = parseFloat(fPerPrice.value) || 0;
+    const quantity = parseInt(fQuantity.value) || 1;
+    const amount = parseFloat((perPrice * quantity).toFixed(2)) || parseFloat(fAmount.value) || 0;
     const status = fStatus.value;
     const scheduledDateVal = fScheduledDate.value ? fScheduledDate.value : new Date().toISOString().split('T')[0];
 
@@ -676,6 +713,8 @@
 
     const orderId = generateOrderId();
     const payload = {
+      perPrice: perPrice,
+      quantity: quantity,
       orderId,
       firstName, lastName, phone, tellicaller,
       address, city, state, pincode,
@@ -845,9 +884,14 @@
         // body
         const body = document.createElement('div');
         body.className = 'text-sm text-gray-700';
-        body.innerHTML = `<div><b>Tellicaller:</b> ${order.tellicaller || '-'}</div>
+        const dispQty = order.quantity || 1;
+        const perPriceDisp = (('perPrice' in order) ? order.perPrice : (order.amount && dispQty ? Number((order.amount/dispQty).toFixed(2)) : 0));
+        body.innerHTML = `<div><b>Tellecaller:</b> ${order.tellicaller || '-'}</div>
                           <div><b>Order ID:</b> ${(order.externalOrderId && order.externalOrderId !== '') ? order.externalOrderId : 'Not Defined'}</div>
-                          <div class="text-xs text-gray-500 mt-1"><b>DB ID:</b> ${order.orderId}</div>`;
+                          <div><b>Quantity:</b> ${dispQty} pcs</div>
+                          <div><b>Per Piece:</b> ₹ ${perPriceDisp != null ? Number(perPriceDisp).toFixed(2) : '0.00'}</div>
+
+                          <div class="text-xs text-gray-500 mt-1"><b>DB ID:</b> </div>`;
         wrap.appendChild(body);
 
         // actions if order not closed
@@ -895,7 +939,7 @@
             await ordersRef.child(order.orderId).update({
               oodStatus: "today",
               oodMarkedAt: Date.now(),
-              oodTellicaller: currentUser.name,
+              //oodTellicaller: currentUser.name,
               oodRemark: "Call"
             });
             showToast("Order marked Out Of Delivery");
@@ -1047,6 +1091,9 @@ document.addEventListener('DOMContentLoaded', function(){
   })();
   // ---------- end RTO PINCODE AUTOFILL ----------
 
+</script>
+<script>
+window.onload = function(){ showSection('myOrdersSection'); };
 </script>
 </body>
 </html>

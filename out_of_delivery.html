@@ -12,6 +12,8 @@
     .btn-green { background:#16a34a; color:white; }
     .btn-yellow { background:#ca8a04; color:white; }
     .btn-red { background:#dc2626; color:white; }
+    /* modal helpers */
+    .glass-card { background: rgba(255,255,255,0.9); border-radius: 12px; }
   </style>
 </head>
 <body class="bg-gray-50 min-h-screen text-gray-800">
@@ -22,13 +24,13 @@
       <h1 class="text-xl font-semibold">Out Of Delivery Orders</h1>
       <div class="flex gap-3 items-center">
         <select id="filterOOD" class="px-2 py-2 rounded-md border bg-white text-black">
+          <option value="all" selected>All OOD Orders</option>
           <option value="mine">My OOD Orders</option>
-          <option value="all">All OOD Orders</option>
         </select>
         <button id="pendingBtn" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-md shadow">
           Pending <span id="pendingCount" class="ml-2 bg-red-500 text-white rounded-full px-2 py-0.5 text-xs">0</span>
         </button>
-        <button onclick="window.location.href='Order-Management.html'" 
+        <button onclick="window.location.href='Order-Management.html'"
           class="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-md shadow">
           Back to Dashboard
         </button>
@@ -48,11 +50,31 @@
     </div>
   </main>
 
+  <!-- Customer Detail Modal (matches Order-Management layout) -->
+  <div id="customerBackdrop" class="fixed inset-0 bg-black bg-opacity-40 hidden items-center justify-center z-50">
+    <div class="bg-white rounded-2xl w-full max-w-4xl mx-4 shadow-2xl p-6 glass-card modal-inner">
+      <div class="flex justify-between items-center mb-4">
+        <h3 id="custTitle" class="text-2xl font-bold text-green-800">Customer Details</h3>
+        <button id="custClose" class="modal-close-btn text-gray-600 hover:text-gray-900" aria-label="Close">✕</button>
+      </div>
+
+      <div id="customerDetails" class="space-y-6"></div>
+
+      <div class="flex justify-end mt-4">
+        <button id="custClose2" class="px-5 py-2 rounded-lg bg-red-500 text-white shadow hover:bg-red-600 transition">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" style="position:fixed;bottom:1rem;right:1rem; background:rgba(0,0,0,0.85); color:#fff; padding:8px 12px; border-radius:8px; display:none; z-index:9999;"></div>
+
   <!-- Firebase -->
   <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
 
   <script>
+  /******** Firebase config ********/
   const firebaseConfig = {
     apiKey: "AIzaSyB1wbJonjyJQDrPJWbMCVBtRolJH4HDskU",
     authDomain: "shreejee-ayucare.firebaseapp.com",
@@ -62,9 +84,16 @@
     messagingSenderId: "247248655859",
     appId: "1:247248655859:web:b09bfc30ff6953aad42e86"
   };
-  firebase.initializeApp(firebaseConfig);
+  if (!firebase.apps || !firebase.apps.length) firebase.initializeApp(firebaseConfig);
   const db = firebase.database();
 
+  const currentUser = JSON.parse(localStorage.getItem("currentTellicaller") || "{}");
+  if (!currentUser.name) { /* not logged in — redirect */ window.location.href = "index.html"; }
+
+  const ordersRef = db.ref('oms_orders');
+  let firebaseOrders = {};
+
+  /******** Helpers ********/
   function showToast(msg, t=2500){
     const td = document.getElementById('toast');
     if (!td) return;
@@ -73,14 +102,16 @@
     setTimeout(()=> td.style.display = 'none', t);
   }
 
-  
-  const currentUser = JSON.parse(localStorage.getItem("currentTellicaller") || "{}");
-  if (!currentUser.name) { window.location.href = "index.html"; }
+  function safeToNumber(v){
+    if (v === undefined || v === null) return null;
+    return (typeof v === 'number') ? v : (isNaN(Number(v)) ? null : Number(v));
+  }
 
-  const ordersRef = db.ref('oms_orders');
-  let firebaseOrders = {};
-
-  function isToday(ts){ return new Date(ts).toDateString() === new Date().toDateString(); }
+  function isToday(ts){
+    if (!ts) return false;
+    const d = new Date(safeToNumber(ts) || ts);
+    return d.toDateString() === new Date().toDateString();
+  }
 
   function getBtnClass(val){
     if (val==="Agree") return "btn-green";
@@ -89,165 +120,7 @@
     return "btn-blue";
   }
 
-  function renderOOD() {
-    const filterVal = document.getElementById("filterOOD").value;
-    const container = document.getElementById("oodContainer");
-    const noMsg = document.getElementById("noOrdersMsg");
-    container.innerHTML = "";
-
-    let todayOOD = Object.values(firebaseOrders).filter(o =>
-      o.oodStatus === "today" && o.oodMarkedAt && isToday(o.oodMarkedAt)
-    );
-    if (filterVal === "mine") {
-  todayOOD = todayOOD.filter(o => o.tellicaller === currentUser.name);
-}
-
-    if (!todayOOD.length) { noMsg.classList.remove("hidden"); return; }
-    noMsg.classList.add("hidden");
-    
-    const pendingCount = document.getElementById("pendingCount");
-    if (pendingCount) {
-      const pendings = Object.values(firebaseOrders).filter(o =>
-        o.oodStatus === "today" && o.oodMarkedAt && !isToday(o.oodMarkedAt) && o.status !== 'closed'
-      );
-      pendingCount.textContent = pendings.length;
-    }
-    
-
-    todayOOD.forEach(o => {
-      const card = document.createElement("div");
-      card.className = "order-card bg-white p-4 rounded shadow border";
-
-      const btn = document.createElement("button");
-      btn.textContent = o.oodRemark || "Call";
-      btn.className = "px-3 py-1 rounded " + getBtnClass(o.oodRemark);
-
-      btn.addEventListener("click", ()=> {
-        // show inline editor (select + Save/Cancel) instead of auto-saving on change
-        const editor = document.createElement('div');
-        editor.className = 'flex items-center gap-2 mt-3';
-
-        const select = document.createElement('select');
-        select.className = 'border p-1 rounded text-sm';
-        ["Agree","Not Picked","Refused"].forEach(opt=>{
-          const option = document.createElement('option');
-          option.value = opt; option.textContent = opt;
-          if ((o.oodRemark||"") === opt) option.selected = true;
-          select.appendChild(option);
-        });
-
-        const saveBtn = document.createElement('button');
-        saveBtn.className = 'px-3 py-1 bg-green-600 text-white rounded text-sm';
-        saveBtn.textContent = 'Save';
-
-        const cancelBtn = document.createElement('button');
-        cancelBtn.className = 'px-3 py-1 bg-gray-300 text-black rounded text-sm';
-        cancelBtn.textContent = 'Cancel';
-
-        editor.appendChild(select);
-        editor.appendChild(saveBtn);
-        editor.appendChild(cancelBtn);
-
-        // hide original button and show editor
-        btn.style.display = 'none';
-        card.appendChild(editor);
-
-        // Save handler - update only when user clicks Save
-        saveBtn.addEventListener('click', async ()=> {
-          const remark = select.value;
-          try {
-            await ordersRef.child(o.orderId).update({ oodRemark: remark, oodLastUpdated: Date.now() });
-            // small toast feedback (function declared below)
-            if (typeof showToast === 'function') showToast('OOD remark saved');
-          } catch (err) {
-            console.error(err);
-            alert('Error saving remark');
-          }
-          // cleanup and update UI
-          editor.remove();
-          btn.textContent = remark;
-          btn.className = 'px-3 py-1 rounded ' + getBtnClass(remark);
-          btn.style.display = '';
-          // re-render to update pending count and lists (listener will also pick up changes)
-          renderOOD();
-        });
-
-        // Cancel handler - revert UI
-        cancelBtn.addEventListener('click', ()=> {
-          editor.remove();
-          btn.style.display = '';
-        });
-      });
-
-      card.innerHTML = `
-        <div class="flex justify-between">
-          <div>
-            <h2 class="font-semibold text-lg text-blue-700">${o.firstName||""} ${o.lastName||""}</h2>
-            <p class="text-sm text-gray-600">Phone: ${o.phone}</p>
-            <p class="text-sm text-gray-600">Amount: ₹${o.amount}</p>
-            <p class="text-sm text-gray-600">Tellecaller: ${o.tellicaller}</p>
-          </div>
-        </div>
-      `;
-      card.appendChild(btn);
-      // Show closed orders with status label
-      if (o.status === 'closed') {
-        const statusDiv = document.createElement('div');
-        statusDiv.className = 'mt-2 text-sm font-semibold';
-        statusDiv.textContent = 'Status: ' + (o.closedType || 'Closed');
-        if (o.closedType === 'Delivered') {
-          statusDiv.classList.add('text-green-600');
-        } else if (o.closedType === 'RTO') {
-          statusDiv.classList.add('text-red-600');
-        }
-        card.appendChild(statusDiv);
-      }
-    
-      
-      if (o.status !== 'closed') {
-if (o.status !== 'closed') {
-const actions = document.createElement("div");
-      actions.className = "mt-3 flex gap-2";
-
-      const delBtn = document.createElement("button");
-      delBtn.className = "px-3 py-1 bg-blue-600 text-white rounded text-sm";
-      delBtn.textContent = "Mark Delivered";
-      delBtn.addEventListener("click", ()=> closeOrderWithType(o.orderId, 'Delivered'));
-
-      const rtoInput = document.createElement("input");
-      rtoInput.placeholder = "RTO Remark";
-      rtoInput.className = "border p-1 rounded text-sm";
-
-      const rtoBtn = document.createElement("button");
-      rtoBtn.className = "px-3 py-1 bg-red-600 text-white rounded text-sm";
-      rtoBtn.textContent = "Mark RTO";
-      rtoBtn.addEventListener("click", ()=> {
-        if (!rtoInput.value || !rtoInput.value.trim()) { alert('Please enter remark for RTO'); return; }
-        closeOrderWithType(o.orderId, 'RTO', rtoInput.value.trim());
-      });
-
-      actions.appendChild(delBtn);
-      actions.appendChild(rtoInput);
-      actions.appendChild(rtoBtn);
-      card.appendChild(actions);
-}
-}
-    
-      
-      if (o.status === 'closed') {
-        card.classList.add('border-2');
-        if (o.closedType === 'Delivered') {
-          card.classList.add('bg-gradient-to-r','from-green-50','to-green-100','border-green-600');
-        } else if (o.closedType === 'RTO') {
-          card.classList.add('bg-gradient-to-r','from-red-50','to-red-100','border-red-600');
-        }
-      }
-    
-      container.appendChild(card);
-    });
-  }
-
-  
+  /******** Actions ********/
   async function closeOrderWithType(orderId, type, remark='') {
     if (!orderId) return;
     if (type === 'RTO' && (!remark || !remark.trim())) { alert('Remark is required for RTO'); return; }
@@ -258,15 +131,355 @@ const actions = document.createElement("div");
     renderOOD();
     renderPending();
   }
-    
+
+  async function saveOODRemark(orderId, remark) {
+    if (!orderId) return;
+    await ordersRef.child(orderId).update({ oodRemark: remark, oodLastUpdated: Date.now() });
+    showToast('OOD remark saved');
+  }
+
+  /******** Render OOD list ********/
+  function renderOOD() {
+    const filterVal = document.getElementById("filterOOD") ? document.getElementById("filterOOD").value : "all";
+    const container = document.getElementById("oodContainer");
+    const noMsg = document.getElementById("noOrdersMsg");
+    container.innerHTML = "";
+
+    // Accept orders where oodStatus === 'today' and either no oodMarkedAt (legacy) OR oodMarkedAt is today.
+    let todayOOD = Object.values(firebaseOrders || {}).filter(o =>
+      o && o.oodStatus === "today" && (!o.oodMarkedAt || isToday(o.oodMarkedAt))
+    );
+
+    if (filterVal === "mine") todayOOD = todayOOD.filter(o => o.tellicaller === currentUser.name);
+
+    if (!todayOOD.length) {
+      if (noMsg) noMsg.classList.remove("hidden");
+    } else {
+      if (noMsg) noMsg.classList.add("hidden");
+    }
+
+    // update pending count
+    const pendingCount = document.getElementById("pendingCount");
+    if (pendingCount) {
+      const pendings = Object.values(firebaseOrders || {}).filter(o =>
+        o && o.oodStatus === "today" && o.oodMarkedAt && !isToday(o.oodMarkedAt) && o.status !== 'closed'
+      );
+      pendingCount.textContent = pendings.length;
+    }
+
+    todayOOD.forEach(o => {
+      const card = document.createElement("div");
+      card.className = "order-card bg-white p-4 rounded shadow border";
+
+      // Build content
+      const left = document.createElement('div');
+      left.innerHTML = `
+        <h2 class="font-semibold text-lg text-blue-700">${o.firstName||''} ${o.lastName||''}</h2>
+        <p class="text-sm text-gray-600">Phone: ${o.phone || '-'}</p>
+        <p class="text-sm text-gray-600">Amount: ₹${(o.amount != null) ? Number(o.amount).toFixed(2) : '0.00'}</p>
+        <p class="text-sm text-gray-600">Tellecaller: ${o.tellicaller || '-'}</p>
+        <p class="text-sm text-gray-600">External Order ID: ${o.externalOrderId && o.externalOrderId !== '' ? o.externalOrderId : 'Not Defined'}</p>
+      `;
+
+      const rightBtnWrap = document.createElement('div');
+      rightBtnWrap.className = 'flex flex-col items-end gap-2';
+      const viewBtn = document.createElement('button');
+      viewBtn.className = 'bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm';
+      viewBtn.textContent = 'View';
+      // open modal with full details (uses phone + orderId)
+      viewBtn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        openCustomerModal(o.phone, o.orderId);
+      });
+      rightBtnWrap.appendChild(viewBtn);
+
+      // add remark / call button
+      const remarkBtn = document.createElement("button");
+      remarkBtn.textContent = o.oodRemark || "Call";
+      remarkBtn.className = "px-3 py-1 rounded " + getBtnClass(o.oodRemark);
+      remarkBtn.addEventListener('click', ()=> {
+        // inline editor for remark
+        const editor = document.createElement('div');
+        editor.className = 'flex items-center gap-2 mt-3';
+
+        const select = document.createElement('select'); select.className = 'border p-1 rounded text-sm';
+        ["Agree","Not Picked","Refused"].forEach(opt=>{
+          const option = document.createElement('option'); option.value = opt; option.textContent = opt;
+          if ((o.oodRemark||"") === opt) option.selected = true;
+          select.appendChild(option);
+        });
+
+        const saveBtn = document.createElement('button'); saveBtn.className = 'px-3 py-1 bg-green-600 text-white rounded text-sm'; saveBtn.textContent = 'Save';
+        const cancelBtn = document.createElement('button'); cancelBtn.className = 'px-3 py-1 bg-gray-300 text-black rounded text-sm'; cancelBtn.textContent = 'Cancel';
+
+        editor.appendChild(select); editor.appendChild(saveBtn); editor.appendChild(cancelBtn);
+        remarkBtn.style.display = 'none';
+        card.appendChild(editor);
+
+        saveBtn.addEventListener('click', async ()=> {
+          const remark = select.value;
+          await ordersRef.child(o.orderId).update({ oodRemark: remark, oodLastUpdated: Date.now() });
+          showToast('OOD remark saved');
+          editor.remove();
+          remarkBtn.textContent = remark;
+          remarkBtn.className = 'px-3 py-1 rounded ' + getBtnClass(remark);
+          remarkBtn.style.display = '';
+          renderOOD();
+        });
+
+        cancelBtn.addEventListener('click', ()=> {
+          editor.remove();
+          remarkBtn.style.display = '';
+        });
+      });
+      rightBtnWrap.appendChild(remarkBtn);
+
+      // assemble main row
+      const row = document.createElement('div');
+      row.className = 'flex justify-between items-start';
+      const leftWrap = document.createElement('div');
+      leftWrap.appendChild(left);
+      row.appendChild(leftWrap);
+      row.appendChild(rightBtnWrap);
+      card.appendChild(row);
+
+      // actions for not closed orders
+      if (o.status !== 'closed') {
+        const actions = document.createElement('div'); actions.className = 'mt-3 flex gap-2';
+
+        const delBtn = document.createElement('button');
+        delBtn.className = 'px-3 py-1 bg-blue-600 text-white rounded text-sm';
+        delBtn.textContent = 'Mark Delivered';
+        delBtn.addEventListener('click', ()=> closeOrderWithType(o.orderId, 'Delivered'));
+
+        const rtoInput = document.createElement('input');
+        rtoInput.placeholder = 'RTO Remark';
+        rtoInput.className = 'border p-1 rounded text-sm';
+
+        const rtoBtn = document.createElement('button');
+        rtoBtn.className = 'px-3 py-1 bg-red-600 text-white rounded text-sm';
+        rtoBtn.textContent = 'Mark RTO';
+        rtoBtn.addEventListener('click', ()=> {
+          if (!rtoInput.value || !rtoInput.value.trim()) { alert('Please enter remark for RTO'); return; }
+          closeOrderWithType(o.orderId, 'RTO', rtoInput.value.trim());
+        });
+
+        actions.appendChild(delBtn);
+        actions.appendChild(rtoInput);
+        actions.appendChild(rtoBtn);
+        card.appendChild(actions);
+      } else {
+        // closed - show big status
+        const statusDiv = document.createElement('div');
+        statusDiv.className = 'mt-3 text-sm font-semibold';
+        statusDiv.textContent = 'Status: ' + (o.closedType || 'Closed');
+        if (o.closedType === 'Delivered') statusDiv.classList.add('text-green-600');
+        if (o.closedType === 'RTO') statusDiv.classList.add('text-red-600');
+        card.appendChild(statusDiv);
+      }
+
+      container.appendChild(card);
+    });
+
+  } // end renderOOD
+
+  /******** Customer modal (mirrors Order-Management.html layout) ********/
+  function openCustomerModal(phone, highlightOrderId = null) {
+    // try to find customer data — if your system has a customers node, prefer it.
+    // For compatibility we look through orders to collect customer info and history.
+    const allOrders = Object.values(firebaseOrders || {});
+    const customerOrders = allOrders.filter(o => o && o.phone === phone);
+    if (!customerOrders.length) {
+      alert('No customer record found for phone: ' + phone);
+      return;
+    }
+
+    // reduce to one 'customer' snapshot using latest order fields as fallback
+    const latest = customerOrders.reduce((a,b) => ( (b.timestamp||0) > (a.timestamp||0) ? b : a ), customerOrders[0]);
+
+    const cust = {
+      firstName: latest.firstName || '',
+      lastName: latest.lastName || '',
+      phone: latest.phone || phone,
+      address: latest.address || '',
+      city: latest.city || '',
+      state: latest.state || '',
+      pincode: latest.pincode || '',
+      tellicallerLast: latest.tellicaller || ''
+    };
+
+    document.getElementById('custTitle').textContent = `Customer — ${cust.firstName || ''} ${cust.lastName || ''}`;
+
+    const details = document.getElementById('customerDetails');
+    details.innerHTML = ''; // clear
+
+    // Customer Info Card
+    const infoCard = document.createElement('div');
+    infoCard.className = 'p-5 rounded-xl bg-gradient-to-r from-green-50 to-white shadow-md';
+    infoCard.innerHTML = `
+      <h4 class="font-semibold text-lg mb-3 text-green-800">👤 Customer Information</h4>
+      <div class="grid grid-cols-2 gap-3 text-sm text-gray-700">
+        <div><b>First Name:</b> ${cust.firstName || '-'}</div>
+        <div><b>Last Name:</b> ${cust.lastName || '-'}</div>
+        <div><b>Phone:</b> ${cust.phone || '-'}</div>
+        <div><b>City:</b> ${cust.city || '-'}</div>
+        <div><b>State:</b> ${cust.state || '-'}</div>
+        <div><b>Pincode:</b> ${cust.pincode || '-'}</div>
+        <div class="col-span-2"><b>Address:</b> ${cust.address || '-'}</div>
+      </div>
+    `;
+    details.appendChild(infoCard);
+
+    // Order History Card
+    const histCard = document.createElement('div');
+    histCard.className = 'p-5 rounded-xl bg-white shadow-md mt-4';
+    histCard.innerHTML = `<h4 class="font-semibold text-lg mb-3 text-gray-800">📦 Order History</h4>`;
+
+    const histList = document.createElement('div'); histList.className = 'space-y-3';
+    // sort by timestamp desc
+    customerOrders.sort((a,b)=> (b.timestamp || 0) - (a.timestamp || 0));
+    if (!customerOrders.length) {
+      histList.innerHTML = `<div class="text-gray-500 italic">No orders yet.</div>`;
+    } else {
+      customerOrders.forEach(order => {
+        const wrap = document.createElement('div');
+        wrap.className = 'p-4 border rounded-lg bg-white hover:shadow-md transition';
+
+        // header row
+        const header = document.createElement('div');
+        header.className = 'flex justify-between items-center mb-2';
+        const left = document.createElement('div');
+        left.innerHTML = `<div class="font-semibold text-lg">₹ ${order.amount != null ? Number(order.amount).toFixed(2) : '0.00'}</div>
+                          <div class="text-xs text-gray-500">${order.timestamp ? new Date(order.timestamp).toLocaleString() : '—'}</div>`;
+        const right = document.createElement('div');
+        const statusLabel = order.status === 'closed' ? (order.closedType || 'Closed') : (order.status || 'Open');
+        const badge = document.createElement('span');
+        badge.className = 'px-2 py-0.5 rounded text-xs text-white';
+        if (order.status === 'closed') {
+          if (order.closedType === 'Delivered') badge.style.background = '#10b981';
+          else badge.style.background = '#ef4444';
+        } else if (order.status === 'dispatched') badge.style.background = '#0ea5a4';
+        else badge.style.background = '#f97316';
+        badge.textContent = statusLabel;
+        right.appendChild(badge);
+
+        header.appendChild(left); header.appendChild(right);
+        wrap.appendChild(header);
+
+        // body info
+        const body = document.createElement('div'); body.className = 'text-sm text-gray-700';
+        const qty = order.quantity || 1;
+        const perPrice = ('perPrice' in order) ? order.perPrice : (order.amount && qty ? Number((order.amount / qty).toFixed(2)) : 0);
+        body.innerHTML = `
+          <div><b>Tellecaller:</b> ${order.tellicaller || '-'}</div>
+          <div><b>Order ID:</b> ${(order.externalOrderId && order.externalOrderId !== '') ? order.externalOrderId : 'Not Defined'}</div>
+          <div><b>Quantity:</b> ${qty} pcs</div>
+          <div><b>Per Piece:</b> ₹ ${perPrice != null ? Number(perPrice).toFixed(2) : '0.00'}</div>
+        `;
+        wrap.appendChild(body);
+
+        // actions for non-closed orders in history
+        if (order.status !== 'closed') {
+          const actions = document.createElement('div'); actions.className = 'mt-3 flex flex-wrap gap-2 items-center';
+
+          const idInp = document.createElement('input');
+          idInp.placeholder = 'External Order ID';
+          idInp.className = 'border p-2 rounded text-sm';
+          idInp.value = order.externalOrderId || '';
+
+          const saveIdBtn = document.createElement('button');
+          saveIdBtn.className = 'px-3 py-1 bg-green-600 text-white rounded text-sm';
+          saveIdBtn.textContent = 'Save ID';
+          saveIdBtn.addEventListener('click', async ()=> {
+            if (!idInp.value || !idInp.value.trim()) { alert('Please enter External Order ID'); return; }
+            await ordersRef.child(order.orderId).update({ externalOrderId: idInp.value.trim(), status: 'dispatched', dispatchedAt: Date.now() });
+            showToast('External Order ID saved and order marked dispatched');
+          });
+
+          const deliveredBtn = document.createElement('button');
+          deliveredBtn.className = 'px-3 py-1 bg-blue-600 text-white rounded text-sm';
+          deliveredBtn.textContent = 'Mark Delivered';
+          deliveredBtn.addEventListener('click', ()=> closeOrderWithType(order.orderId, 'Delivered'));
+
+          const rtoInp = document.createElement('input');
+          rtoInp.placeholder = 'Remark for RTO';
+          rtoInp.className = 'border p-2 rounded text-sm';
+
+          const rtoBtn = document.createElement('button');
+          rtoBtn.className = 'px-3 py-1 bg-red-600 text-white rounded text-sm';
+          rtoBtn.textContent = 'Mark RTO';
+          rtoBtn.addEventListener('click', ()=> {
+            if (!rtoInp.value || !rtoInp.value.trim()) { alert('Please enter remark for RTO'); return; }
+            closeOrderWithType(order.orderId, 'RTO', rtoInp.value.trim());
+          });
+
+          // Mark OOD (if still needed)
+          const oodBtn = document.createElement('button');
+          oodBtn.className = 'px-3 py-1 bg-purple-600 text-white rounded text-sm';
+          oodBtn.textContent = 'Mark OOD';
+          oodBtn.addEventListener('click', async ()=> {
+            await ordersRef.child(order.orderId).update({
+              oodStatus: "today",
+              oodMarkedAt: Date.now(),
+              oodRemark: "Call"
+            });
+            showToast("Order marked Out Of Delivery");
+          });
+
+          actions.appendChild(idInp);
+          actions.appendChild(saveIdBtn);
+          actions.appendChild(deliveredBtn);
+          actions.appendChild(rtoInp);
+          actions.appendChild(rtoBtn);
+          actions.appendChild(oodBtn);
+
+          wrap.appendChild(actions);
+        } else {
+          if (order.closedType === 'RTO') {
+            const remarkDiv = document.createElement('div');
+            remarkDiv.className = 'mt-2 text-sm text-red-700';
+            remarkDiv.innerHTML = `<b>RTO Remark:</b> ${order.remark || '-'}`;
+            wrap.appendChild(remarkDiv);
+          }
+        }
+
+        histList.appendChild(wrap);
+      });
+    }
+
+    histCard.appendChild(histList);
+    details.appendChild(histCard);
+
+    // show modal
+    const back = document.getElementById('customerBackdrop');
+    back.style.display = 'flex';
+    back.classList.remove('hidden');
+  }
+
+  // modal close handlers
+  document.addEventListener('click', function(e){
+    // don't break if elements not present yet
+  });
+  (function attachModalClosers(){
+    const custClose = document.getElementById('custClose');
+    const custClose2 = document.getElementById('custClose2');
+    const back = document.getElementById('customerBackdrop');
+    if (custClose) custClose.addEventListener('click', ()=> { back.style.display = 'none'; back.classList.add('hidden'); });
+    if (custClose2) custClose2.addEventListener('click', ()=> { back.style.display = 'none'; back.classList.add('hidden'); });
+    if (back) {
+      back.addEventListener('click', function(e){ if (e.target === back) { back.style.display='none'; back.classList.add('hidden'); }});
+    }
+  })();
+
+  /******** Pending list ********/
   function renderPending() {
     const sec = document.getElementById("pendingSection");
     const cont = document.getElementById("pendingContainer");
     cont.innerHTML = "";
     sec.classList.remove("hidden");
 
-    let pendings = Object.values(firebaseOrders).filter(o =>
-      o.oodStatus === "today" && o.oodMarkedAt && !isToday(o.oodMarkedAt) && o.status !== 'closed'
+    let pendings = Object.values(firebaseOrders || {}).filter(o =>
+      o && o.oodStatus === "today" && o.oodMarkedAt && !isToday(o.oodMarkedAt) && o.status !== 'closed'
     );
 
     if (!pendings.length) {
@@ -274,61 +487,61 @@ const actions = document.createElement("div");
       return;
     }
 
-    
-    const pendingCount = document.getElementById("pendingCount");
-    if (pendingCount) pendingCount.textContent = pendings.length;
-    
     pendings.forEach(o => {
-      const card = document.createElement("div");
-      card.className = "order-card bg-white p-4 rounded shadow border";
+      const card = document.createElement('div');
+      card.className = 'order-card bg-white p-4 rounded shadow border';
       card.innerHTML = `
-        <h2 class="font-semibold text-lg text-blue-700">${o.firstName||""} ${o.lastName||""}</h2>
+        <h2 class="font-semibold text-lg text-blue-700">${o.firstName||''} ${o.lastName||''}</h2>
         <p class="text-sm">Phone: ${o.phone}</p>
         <p class="text-sm">Tellecaller: ${o.tellicaller}</p>
-
-        <p class="text-sm">Remark: ${o.oodRemark||"Pending"}</p>
+        <p class="text-sm">Remark: ${o.oodRemark||'Pending'}</p>
       `;
-      
+
+      // add actions same as main list
       if (o.status !== 'closed') {
-const actions = document.createElement("div");
-      actions.className = "mt-3 flex gap-2";
+        const actions = document.createElement('div'); actions.className = 'mt-3 flex gap-2';
+        const delBtn = document.createElement('button'); delBtn.className = 'px-3 py-1 bg-blue-600 text-white rounded text-sm'; delBtn.textContent = 'Mark Delivered';
+        delBtn.addEventListener('click', ()=> closeOrderWithType(o.orderId, 'Delivered'));
+        const rtoInput = document.createElement('input'); rtoInput.placeholder = 'RTO Remark'; rtoInput.className = 'border p-1 rounded text-sm';
+        const rtoBtn = document.createElement('button'); rtoBtn.className = 'px-3 py-1 bg-red-600 text-white rounded text-sm'; rtoBtn.textContent = 'Mark RTO';
+        rtoBtn.addEventListener('click', ()=> {
+          if (!rtoInput.value.trim()) { alert('Please enter remark for RTO'); return; }
+          closeOrderWithType(o.orderId, 'RTO', rtoInput.value.trim());
+        });
+        actions.appendChild(delBtn); actions.appendChild(rtoInput); actions.appendChild(rtoBtn);
+        card.appendChild(actions);
+      }
 
-      const delBtn = document.createElement("button");
-      delBtn.className = "px-3 py-1 bg-blue-600 text-white rounded text-sm";
-      delBtn.textContent = "Mark Delivered";
-      delBtn.addEventListener("click", ()=> closeOrderWithType(o.orderId, 'Delivered'));
-
-      const rtoInput = document.createElement("input");
-      rtoInput.placeholder = "RTO Remark";
-      rtoInput.className = "border p-1 rounded text-sm";
-
-      const rtoBtn = document.createElement("button");
-      rtoBtn.className = "px-3 py-1 bg-red-600 text-white rounded text-sm";
-      rtoBtn.textContent = "Mark RTO";
-      rtoBtn.addEventListener("click", ()=> {
-        if (!rtoInput.value || !rtoInput.value.trim()) { alert('Please enter remark for RTO'); return; }
-        closeOrderWithType(o.orderId, 'RTO', rtoInput.value.trim());
-      });
-
-      actions.appendChild(delBtn);
-      actions.appendChild(rtoInput);
-      actions.appendChild(rtoBtn);
-      card.appendChild(actions);
-}
-    
       cont.appendChild(card);
     });
   }
 
-  ordersRef.on("value", snap=>{
+  /******** Firebase listener and wiring ********/
+  ordersRef.on('value', snap => {
     firebaseOrders = snap.val() || {};
+    // normalize if needed (optional)
+    Object.keys(firebaseOrders).forEach(k => {
+      const o = firebaseOrders[k] || {};
+      if (!('quantity' in o)) o.quantity = 1;
+      if (!('perPrice' in o)) {
+        const q = o.quantity || 1;
+        o.perPrice = (o.amount && q ? parseFloat((o.amount / q).toFixed(2)) : 0);
+      }
+      // ensure amount numeric
+      if (o.amount !== undefined && o.amount !== null) o.amount = Number(o.amount);
+      firebaseOrders[k] = o;
+    });
     renderOOD();
   });
 
-  document.getElementById("filterOOD").onchange = renderOOD;
-  document.getElementById("pendingBtn").onclick = renderPending;
-  </script>
+  // wire UI controls safely after DOM is ready
+  document.addEventListener('DOMContentLoaded', function(){
+    const filter = document.getElementById('filterOOD');
+    const pendingBtn = document.getElementById('pendingBtn');
+    if (filter) filter.addEventListener('change', renderOOD);
+    if (pendingBtn) pendingBtn.addEventListener('click', renderPending);
+  });
 
-  <div id="toast" style="position:fixed;bottom:1rem;right:1rem; background:rgba(0,0,0,0.85); color:#fff; padding:8px 12px; border-radius:8px; display:none; z-index:9999;"></div>
+  </script>
 </body>
 </html>

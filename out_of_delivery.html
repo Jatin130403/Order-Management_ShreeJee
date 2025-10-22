@@ -178,7 +178,7 @@
         <p class="text-sm text-gray-600">Phone: ${o.phone || '-'}</p>
         <p class="text-sm text-gray-600">Amount: ₹${(o.amount != null) ? Number(o.amount).toFixed(2) : '0.00'}</p>
         <p class="text-sm text-gray-600">Tellecaller: ${o.tellicaller || '-'}</p>
-        <p class="text-sm text-gray-600">External Order ID: ${o.externalOrderId && o.externalOrderId !== '' ? o.externalOrderId : 'Not Defined'}</p>
+        <p class="text-sm text-gray-600">Order ID: ${o.externalOrderId && o.externalOrderId !== '' ? o.externalOrderId : 'Not Defined'}</p>
       `;
 
       const rightBtnWrap = document.createElement('div');
@@ -545,3 +545,4 @@
   </script>
 </body>
 </html>
+

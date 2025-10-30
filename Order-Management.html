@@ -3,8 +3,28 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Order Management — ShreeJee Ayucare</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <title>Order Management — ShreeJee Ayucare (Updated)</title>
+  <script src="https://cdn.tailwindcss.com">
+  // Pincode auto-fill
+  if (fPincode) {
+    fPincode.addEventListener('input', ()=>{
+      const pin = fPincode.value.trim();
+      if (pin.length === 6) {
+        fetch(`https://api.postalpincode.in/pincode/${pin}`)
+        .then(res=>res.json())
+        .then(data=>{
+          if (Array.isArray(data) && data[0].Status === 'Success') {
+            const po = data[0].PostOffice && data[0].PostOffice[0];
+            if (!po) return;
+            fCity.value = po.District || '';
+            fState.value = po.State || '';
+          }
+        }).catch(err=>console.error('Pincode fetch error', err));
+      }
+    });
+  }
+
+</script>
   <style>
     /* Background & glass look */
     body{
@@ -17,84 +37,74 @@
       50%{background-position:100% 50%}
       100%{background-position:0% 50%}
     }
-
     .glass-card { background: rgba(255,255,255,0.18); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.2); transition: all .18s ease; }
     .glass-card:hover { transform: translateY(-6px) scale(1.01); box-shadow: 0 18px 40px rgba(0,0,0,0.22); }
-
     .order-open { box-shadow: 0 0 0 3px rgba(250,180,30,0.06); }
     .status-square { width:22px; height:22px; border-radius:4px; display:inline-block; cursor:pointer; }
     .status-square.locked { cursor: not-allowed; opacity:.55; }
     .clickable { cursor:pointer; }
 
+    /* Product badges & card styles */
+    .product-karela { background: linear-gradient(90deg,#ecfdf5,#ecfeff); border-left:4px solid #10b981; }
+    .product-men { background: linear-gradient(90deg,#eef2ff,#f5f3ff); border-left:4px solid #7c3aed; }
+    .order-cancelled { background:#f3f4f6; border:2px solid #dc2626; } /* Grey fill + Red border as requested */
+
+    .product-pill { display:inline-flex; align-items:center; gap:8px; padding:4px 8px; border-radius:999px; font-size:12px; font-weight:600; }
+    .product-pill svg { width:18px; height:18px; }
+
     /* small responsive tweaks */
     @media (max-width:640px){
       .w-40{ width:150px !important; }
     }
-  
-/* --- Mobile improvements & close-button fixes --- */
-@media (max-width: 640px) {
-  /* make nav controls stack and search full width */
-  #searchInput { width: 100% !important; margin-bottom: 0.5rem; }
-  #navControls { width: 100%; display: flex; flex-direction: column; gap: .5rem; align-items: stretch; }
-  #navControls > * { width: 100%; }
-  .w-40 { width: auto !important; }
-}
-/* modal inner wrapper for relative positioning */
-.modal-inner { position: relative; }
-/* larger, always-visible close buttons with hit-area */
-.modal-close-btn {
-  position: absolute;
-  top: 0.75rem;
-  right: 0.75rem;
-  background: rgba(255,255,255,0.95);
-  border-radius: 9999px;
-  padding: 6px 10px;
-  font-size: 1.15rem;
-  line-height: 1;
-  box-shadow: 0 4px 10px rgba(0,0,0,0.12);
-  border: 1px solid rgba(0,0,0,0.06);
-  z-index: 60;
-  cursor: pointer;
-}
-/* ensure modal content scrolls on small screens */
-#modalBackdrop > div, #customerBackdrop > div { max-height: 90vh; overflow: auto; }
-/* mobile hamburger */
-#navHamburger { display: none; }
-@media (max-width: 640px) {
-  #navHamburger { display:inline-flex; align-items:center; justify-content:center; padding:.4rem; background:transparent; border-radius:6px; border:1px solid rgba(255,255,255,0.06); }
-  #navControls.collapsed { display: none !important; }
-}
 
-</style>
+    /* modal inner wrapper for relative positioning */
+    .modal-inner { position: relative; }
+    .modal-close-btn {
+      position: absolute;
+      top: 0.75rem;
+      right: 0.75rem;
+      background: rgba(255,255,255,0.95);
+      border-radius: 9999px;
+      padding: 6px 10px;
+      font-size: 1.15rem;
+      line-height: 1;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.12);
+      border: 1px solid rgba(0,0,0,0.06);
+      z-index: 60;
+      cursor: pointer;
+    }
+
+  </style>
 </head>
 <body class="font-sans text-gray-800 min-h-screen">
 
   <!-- NAV -->
-  <nav class="bg-green-900/95 text-white sticky top-0 z-50 shadow-md">
+  <nav class="bg-green-900/95 text-white fixed top-0 left-0 right-0 z-50 shadow-md">
     <div class="max-w-7xl mx-auto px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
       <div class="flex items-center gap-3">
         <img src="logo.jpg" alt="Logo" class="h-10 w-10 rounded-full object-cover shadow-md" onerror="this.style.display='none'">
         <div>
           <div class="font-semibold text-lg">ShreeJee Ayucare</div>
           <div id="welcomeMsg" class="text-sm text-yellow-300 font-bold"></div>
-          <div class="text-xs text-green-200">Tellecaller Portal</div>
+          <div class="text-xs text-green-200">Admin Portal</div>
         </div>
       </div>
 
       <div id="navControls" class="flex flex-wrap items-center gap-3">
         <input id="searchInput" type="search" placeholder="Search name or phone..." class="px-3 py-2 rounded-md border bg-white text-black w-64 shadow-sm" />
 
-        <!-- Owner filter -->
+        <!-- Owner filter (Admin) -->
         <select id="filterOwner" class="px-2 py-2 rounded-md border bg-white text-black shadow-sm">
           <option value="all">All Orders</option>
           <option value="mine">My Orders</option>
         </select>
 
-        <!-- Status filter -->
+
         <select id="filterStatus" class="px-2 py-2 rounded-md border bg-white text-black shadow-sm">
           <option value="all">All Status</option>
           <option value="delivered">Delivered</option>
           <option value="rto">RTO</option>
+          <option value="cancelled">Cancelled</option>
         </select>
 
         <input id="filterFrom" type="date" class="px-2 py-2 rounded-md border bg-white text-black shadow-sm" />
@@ -108,10 +118,11 @@
        Out of Delivery 
        <span id="oodBadge" class="ml-1 bg-red-500 text-white rounded-full px-2 py-0.5 text-xs">0</span>
       </button>
-        <button id="btnLogout" class="bg-red-500 hover:bg-red-600 px-4 py-2 rounded-md font-semibold shadow text-white">Logout</button>
+        <button id="btnLogout" onclick="logout()" class="bg-red-500 hover:bg-red-600 px-4 py-2 rounded-md font-semibold shadow text-white">Logout</button>
       </div>
     </div>
   </nav>
+<div id="headerSpacer" style="height:72px"></div>
 
   <!-- MAIN -->
   <main class="max-w-6xl mx-auto p-6">
@@ -149,11 +160,19 @@
           <input id="perPrice" type="number" min="0" step="0.01" class="border p-2 rounded" placeholder="Per Price (Single Piece)" required />
           <input id="quantity" type="number" min="1" step="1" class="border p-2 rounded" placeholder="Quantity" value="1" required />
           <input id="amount" type="number" min="0" step="0.01" class="border p-2 rounded" placeholder="Total Amount" required readonly />
+        </div>
+
+        <div class="grid grid-cols-3 gap-3 items-center">
           <select id="statusSelect" class="border p-2 rounded">
             <option value="open">Open</option>
             <option value="dispatched">Dispatched</option>
           </select>
           <input id="scheduledDate" type="date" class="border p-2 rounded" title="Choose a date to schedule this order (defaults to today)" />
+          <!-- Product selector with small inline icons -->
+          <select id="productSelect" class="border p-2 rounded">
+            <option value="Karela Jamun Powder">🟢 Karela Jamun Powder</option>
+            <option value="Men Wellness">🟣 Men Wellness</option>
+          </select><img id="productSelectIcon" src="product1.png" alt="product icon" class="inline-block w-12 h-12 ml-2 align-middle"/> 
         </div>
 
         <div class="flex justify-end gap-3 pt-2">
@@ -184,8 +203,48 @@
   <div id="toast" class="fixed bottom-6 right-6 bg-gray-900 text-white px-4 py-2 rounded shadow hidden"></div>
 
   <!-- Firebase libs -->
-  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js">
+  // Pincode auto-fill
+  if (fPincode) {
+    fPincode.addEventListener('input', ()=>{
+      const pin = fPincode.value.trim();
+      if (pin.length === 6) {
+        fetch(`https://api.postalpincode.in/pincode/${pin}`)
+        .then(res=>res.json())
+        .then(data=>{
+          if (Array.isArray(data) && data[0].Status === 'Success') {
+            const po = data[0].PostOffice && data[0].PostOffice[0];
+            if (!po) return;
+            fCity.value = po.District || '';
+            fState.value = po.State || '';
+          }
+        }).catch(err=>console.error('Pincode fetch error', err));
+      }
+    });
+  }
+
+</script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js">
+  // Pincode auto-fill
+  if (fPincode) {
+    fPincode.addEventListener('input', ()=>{
+      const pin = fPincode.value.trim();
+      if (pin.length === 6) {
+        fetch(`https://api.postalpincode.in/pincode/${pin}`)
+        .then(res=>res.json())
+        .then(data=>{
+          if (Array.isArray(data) && data[0].Status === 'Success') {
+            const po = data[0].PostOffice && data[0].PostOffice[0];
+            if (!po) return;
+            fCity.value = po.District || '';
+            fState.value = po.State || '';
+          }
+        }).catch(err=>console.error('Pincode fetch error', err));
+      }
+    });
+  }
+
+</script>
 
   <script>
   /******** Firebase config (replace if needed) ********/
@@ -198,7 +257,6 @@
     messagingSenderId: "247248655859",
     appId: "1:247248655859:web:b09bfc30ff6953aad42e86"
   };
-  // initialize firebase (guard against double-init if the page is loaded multiple times)
   if (!firebase.apps || !firebase.apps.length) {
     firebase.initializeApp(firebaseConfig);
   } else if (firebase.apps.length === 0) {
@@ -206,13 +264,22 @@
   }
   const db = firebase.database();
 
+
+  // global logout function
+  window.logout = function() {
+    try { localStorage.removeItem('currentTellicaller'); } catch(e) {}
+    window.location.href = 'index.html';
+  };
+
   /******** App state & elements ********/
   const currentUser = JSON.parse(localStorage.getItem("currentTellicaller") || "{}");
-  if (!currentUser.name) { window.location.href = "index.html"; } // protect
+  // show welcome message in nav
+  try{ const welcomeMsgEl = document.getElementById("welcomeMsg"); if (welcomeMsgEl) welcomeMsgEl.textContent = "Welcome " + (currentUser.name || ""); }catch(e){}
+  if (!currentUser.name) { window.location.href = "index.html"; }
 
   const ordersRef = db.ref('oms_orders');
   const customersRef = db.ref('oms_customers');
-  const scheduleRef = db.ref('oms_schedule'); // NEW: scheduled orders
+  const scheduleRef = db.ref('oms_schedule');
 
   let ordersSnapshot = {};
   let customersSnapshot = {};
@@ -222,7 +289,6 @@
   const emptyMessage = document.getElementById('emptyMessage');
   const searchInput = document.getElementById('searchInput');
   const btnAddOrder = document.getElementById('btnAddOrder');
-  const btnLogout = document.getElementById('btnLogout');
   const modalBackdrop = document.getElementById('modalBackdrop');
   const modalClose = document.getElementById('modalClose');
   const orderForm = document.getElementById('orderForm');
@@ -235,10 +301,12 @@
   const custClose = document.getElementById('custClose');
   const custClose2 = document.getElementById('custClose2');
 
-  const filterOwner = document.getElementById('filterOwner');
   const filterStatus = document.getElementById('filterStatus');
   const filterFrom = document.getElementById('filterFrom');
   const filterTo = document.getElementById('filterTo');
+
+  const filterOwner = document.getElementById('filterOwner');
+
 
   // form fields
   const fFirst = document.getElementById('firstName');
@@ -251,7 +319,8 @@
   const fPincode = document.getElementById('pincode');
   const fAmount = document.getElementById('amount');
   const fStatus = document.getElementById('statusSelect');
-  const fScheduledDate = document.getElementById('scheduledDate'); // NEW
+  const fScheduledDate = document.getElementById('scheduledDate');
+  const fProduct = document.getElementById('productSelect');
 
   const fPerPrice = document.getElementById('perPrice');
   const fQuantity = document.getElementById('quantity');
@@ -260,120 +329,30 @@
     const per = parseFloat(fPerPrice.value) || 0;
     const qty = parseInt(fQuantity.value) || 1;
     const total = per * qty;
-    // keep two decimal places
     fAmount.value = total.toFixed(2);
   }
-
-  // attach listeners so amount updates when perPrice or quantity changes
   if (fPerPrice) fPerPrice.addEventListener('input', updateAmountFromInputs);
   if (fQuantity) fQuantity.addEventListener('input', updateAmountFromInputs);
-  // initialize amount on load
   try { updateAmountFromInputs(); } catch(e) {}
 
-  /******** Helpers ********/
   function showToast(msg, t=3000){
     toast.textContent = msg;
     toast.classList.remove('hidden');
     setTimeout(()=> toast.classList.add('hidden'), t);
   }
   function humanDate(ts){ return new Date(ts).toLocaleString(); }
-  function isToday(ts){ return new Date(ts).toDateString() === new Date().toDateString(); }
-  function isYesterday(ts){ const y=new Date(); y.setDate(y.getDate()-1); return new Date(ts).toDateString() === y.toDateString(); }
   function generateOrderId(){ return 'ord_' + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+
   function updateOodBadge(){
-  const badge = document.getElementById('oodBadge');
-  if (!badge) return;
-  const count = Object.values(ordersSnapshot||{}).filter(o =>
-    o.oodStatus === 'today' && (!o.oodRemark || !['Agree','Not Picked','Refused'].includes(o.oodRemark))
-  ).length;
-  badge.textContent = count;
-}
-
-
-  
-  // ------------------ Tellecaller welcome & milestones ------------------
-  const welcomeMsg = document.getElementById('welcomeMsg');
-  if (currentUser && currentUser.name) {
-    welcomeMsg.textContent = `Welcome ${currentUser.name}`;
+    const badge = document.getElementById('oodBadge');
+    if (!badge) return;
+    const count = Object.values(ordersSnapshot||{}).filter(o =>
+      o && o.oodStatus === 'today' && (!o.oodRemark || !['Agree','Not Picked','Refused'].includes(o.oodRemark))
+    ).length;
+    badge.textContent = count;
   }
 
-  // Show toast helper already exists: showToast(msg, t)
-  function launchFireworks() {
-    // create overlay with canvas for simple particle fireworks
-    const fw = document.createElement('div');
-    fw.style.position = 'fixed';
-    fw.style.top = 0; fw.style.left = 0;
-    fw.style.width = '100%'; fw.style.height = '100%';
-    fw.style.pointerEvents = 'none';
-    fw.style.zIndex = 9999;
-    fw.id = 'fwOverlay';
-    fw.innerHTML = '<canvas id="fwCanvas"></canvas>';
-    document.body.appendChild(fw);
-
-    const canvas = document.getElementById('fwCanvas');
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-    const ctx = canvas.getContext('2d');
-    const particles = [];
-    for (let i=0;i<140;i++) {
-      particles.push({
-        x: window.innerWidth/2 + (Math.random()-0.5)*200,
-        y: window.innerHeight/2 + (Math.random()-0.5)*100,
-        vx: (Math.random()-0.5)*8,
-        vy: (Math.random()-0.8)*8 - 2,
-        life: Math.random()*60 + 40,
-        r: Math.random()*3+2,
-        color: `hsl(${Math.random()*360},100%,50%)`
-      });
-    }
-    function loop(){
-      ctx.clearRect(0,0,canvas.width,canvas.height);
-      particles.forEach(p => {
-        p.x += p.vx; p.y += p.vy; p.vy += 0.15; p.life--;
-        ctx.beginPath();
-        ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
-        ctx.fillStyle = p.color;
-        ctx.fill();
-      });
-      if (particles.some(p=>p.life>0)) requestAnimationFrame(loop);
-      else { const el = document.getElementById('fwOverlay'); if (el) el.remove(); }
-    }
-    loop();
-    // safety remove after 4.5s
-    setTimeout(()=>{ const el = document.getElementById('fwOverlay'); if (el) el.remove(); },4500);
-  }
-
-  function checkDailyMilestones() {
-    try {
-      const todayStart = new Date(); todayStart.setHours(0,0,0,0);
-      const todayEnd = new Date(); todayEnd.setHours(23,59,59,999);
-      const todayOrders = Object.values(ordersSnapshot || {}).filter(o=>
-        o.tellicaller === currentUser.name && o.timestamp >= todayStart.getTime() && o.timestamp <= todayEnd.getTime()
-      );
-      const count = todayOrders.length;
-      // 1st
-      if (count === 1) {
-        showToast(`🎉 Great Work ${currentUser.name}!`);
-      }
-      // 3rd
-      if (count === 3) {
-        showToast(`💧 Pani Pi Lijye ${currentUser.name}, Thak Gye Honge.`);
-      }
-      // 5th
-      if (count === 5) {
-        launchFireworks();
-        showToast(`🥟 Momos Khyega?? ${currentUser.name}`);
-      }
-    } catch(e){ console.error(e); }
-  }
-
-  function afterOrderPlaced() {
-    // called after a successful add-order write
-    checkDailyMilestones();
-  }
-  // ------------------ end milestones ------------------
-
-  /******** Render Orders (grouped) ********/
+  /******** Render Orders (grouped) with product awareness ********/
   function renderOrders(filterText=''){
     let list = Object.values(ordersSnapshot || {});
     const q = filterText.trim().toLowerCase();
@@ -384,16 +363,21 @@
       });
     }
 
-    // owner filter
-    if (filterOwner.value === 'mine') {
+    if (filterOwner && filterOwner.value === 'mine') {
+      list = list.filter(o => o.tellicaller === currentUser.name);
+    } else if (!filterOwner) {
+      // non-admin tellecaller view: show only current user's orders
       list = list.filter(o => o.tellicaller === currentUser.name);
     }
+    
 
     // status filter
     if (filterStatus.value === 'delivered') {
       list = list.filter(o => o.status === 'closed' && o.closedType === 'Delivered');
     } else if (filterStatus.value === 'rto') {
       list = list.filter(o => o.status === 'closed' && o.closedType === 'RTO');
+    } else if (filterStatus.value === 'cancelled') {
+      list = list.filter(o => o.status === 'cancelled' || (o.status==='closed' && o.closedType==='Cancelled'));
     }
 
     // date range
@@ -410,11 +394,11 @@
     }
     emptyMessage.classList.add('hidden');
 
-    // group orders by calendar date (each date gets its own block)
+    // group orders by calendar date
     const groups = {};
     list.forEach(o => {
-      const d = new Date(o.timestamp);
-      const key = d.toLocaleDateString(); // localized date string
+      const d = new Date(o.timestamp || Date.now());
+      const key = d.toLocaleDateString();
       if (!groups[key]) groups[key] = [];
       groups[key].push(o);
     });
@@ -431,38 +415,35 @@
       sec.appendChild(head);
 
       arr.sort((a,b)=>b.timestamp - a.timestamp).forEach(order => {
+        // normalize product for display (backcompat)
+        const product = order.product || 'Karela Jamun Powder';
         const row = document.createElement('div');
-        row.className = 'flex items-center justify-between p-3 rounded-md border mb-2 bg-white/90 shadow-sm hover:shadow-lg transition';
-        if (order.status !== 'closed') {
-          row.classList.add('order-open');
+        // base classes + product-specific
+        row.className = 'flex items-center justify-between p-3 rounded-md border mb-2 shadow-sm hover:shadow-lg transition';
+        if (order.status === 'cancelled' || order.closedType === 'Cancelled') {
+          row.classList.add('order-cancelled');
+        } else if (product === 'Men Wellness') {
+          row.classList.add('product-men');
         } else {
-          // visually distinguish Delivered vs RTO very clearly
-          if (order.closedType === 'Delivered') {
-            row.classList.add('bg-gradient-to-r','from-green-50','to-green-100','border-2','border-green-600');
-          } else if (order.closedType === 'RTO') {
-            row.classList.add('bg-gradient-to-r','from-red-50','to-red-100','border-2','border-red-600');
-          }
+          row.classList.add('product-karela');
         }
 
-        // LEFT: status square + name+phone+time
+        // LEFT: product pill + name+phone+time
         const left = document.createElement('div');
         left.className = 'flex items-center gap-3';
 
-        const statusSq = document.createElement('span');
-        statusSq.className = 'status-square';
-        if (order.status === 'closed') { statusSq.style.background = '#9ca3af'; statusSq.classList.add('locked'); }
-        else if (order.status === 'open') statusSq.style.background = '#ef4444';
-        else statusSq.style.background = '#10b981';
-
-        if (order.status !== 'closed') {
-          statusSq.addEventListener('click', (e)=>{
-            e.stopPropagation();
-            toggleDispatched(order.orderId);
-          });
-        }
-        left.appendChild(statusSq);
+        // product pill with inline svg icons (Ayurvedic bottle & shield)
+        const pill = document.createElement('div');
+        pill.className = 'product-pill';
+        pill.innerHTML = (product === 'Men Wellness' ? 
+          `<img src='product2.png' alt='Men' class='w-8 h- rounded-sm inline-block mr-2 align-middle'/> <span>Men Wellness</span>`
+          :
+          `<img src='product1.png' alt='Karela' class='w-8 h-8 rounded-sm inline-block mr-2 align-middle'/> <span>Karela Jamun Powder</span>`
+        );
+        left.appendChild(pill);
 
         const meta = document.createElement('div');
+        meta.style.minWidth = '220px';
         const nameDiv = document.createElement('div');
         nameDiv.className = 'font-medium text-blue-700 hover:underline cursor-pointer';
         nameDiv.textContent = (order.firstName||'') + ' ' + (order.lastName||'');
@@ -470,20 +451,11 @@
 
         const phoneDiv = document.createElement('div');
         phoneDiv.className = 'text-xs text-gray-500';
-        phoneDiv.textContent = order.phone + ' • ' + humanDate(order.timestamp);
+        phoneDiv.textContent = order.phone + ' • ' + humanDate(order.timestamp || Date.now());
 
         meta.appendChild(nameDiv);
         meta.appendChild(phoneDiv);
         left.appendChild(meta);
-
-        // add big status badge for Delivered/RTO to make it obvious to tellecallers
-        if (order.status === 'closed') {
-          const bigBadge = document.createElement('div');
-          bigBadge.className = 'flex items-center mr-3';
-          if (order.closedType === 'Delivered') bigBadge.innerHTML = '<span class="text-2xl mr-3">✅</span>';
-          else if (order.closedType === 'RTO') bigBadge.innerHTML = '<span class="text-2xl mr-3">❌</span>';
-          if (bigBadge.innerHTML) left.insertBefore(bigBadge, left.firstChild);
-        }
 
         // MIDDLE: aligned vertical block
         const middle = document.createElement('div');
@@ -492,8 +464,12 @@
         const tel = document.createElement('span'); tel.className = 'text-xs text-gray-600'; tel.textContent = 'By: ' + (order.tellicaller || '-');
         middle.appendChild(amt);
         middle.appendChild(tel);
-        if (order.status === 'closed') {
-          const st = document.createElement('span'); st.className = 'text-xs text-gray-700'; st.textContent = 'Status: ' + (order.closedType || '-');
+        // product name visible
+        const prodLine = document.createElement('span'); prodLine.className = 'text-xs text-gray-700'; prodLine.innerHTML = "Product: " + product;
+        middle.appendChild(prodLine);
+        if (order.status === 'closed' || order.status === 'cancelled') {
+          const st = document.createElement('span'); st.className = 'text-xs text-gray-700'; 
+          st.textContent = 'Status: ' + (order.status === 'cancelled' ? 'Cancelled' : (order.closedType || '-'));
           middle.appendChild(st);
         }
 
@@ -520,16 +496,15 @@
       ordersContainer.appendChild(sec);
     }
 
-    // render each date-group (most recent first)
     Object.keys(groups).sort((a,b)=> new Date(b) - new Date(a)).forEach(dateStr => {
       createSection(dateStr, groups[dateStr]);
     });
   }
 
-  /******** Firebase listeners ********/
+  /******** Firebase listeners & backward compatibility ********/
   ordersRef.on('value', snap => {
     ordersSnapshot = snap.val() || {};
-    // normalize older orders that may be missing quantity/perPrice (backwards-compat)
+    // normalize older orders that may be missing quantity/perPrice/product/cancelled (backwards-compat)
     Object.keys(ordersSnapshot).forEach(k => {
       const o = ordersSnapshot[k] || {};
       if (!('quantity' in o)) o.quantity = 1;
@@ -539,57 +514,55 @@
       }
       // ensure amount is consistent with perPrice * quantity
       o.amount = parseFloat(((o.perPrice || 0) * (o.quantity || 1)).toFixed(2));
+      // default product for older orders
+      if (!('product' in o) || !o.product) o.product = 'Karela Jamun Powder';
+      // ensure cancelled flag exists
+      if (!('cancelled' in o)) o.cancelled = false;
+      // handle legacy closedType 'Cancelled'
+      if (o.closedType === 'Cancelled') {
+        o.status = 'cancelled';
+        o.cancelled = true;
+      }
       ordersSnapshot[k] = o;
     });
 
     renderOrders(searchInput.value);
     updateOodBadge();
-    try{ checkDailyMilestones(); }catch(e){}
-  });
-  customersRef.on('value', snap => {
-    customersSnapshot = snap.val() || {};
-    // customer data used when opening modal
   });
 
-  // Listen for schedule snapshot (keep local cache)
+  customersRef.on('value', snap => {
+    customersSnapshot = snap.val() || {};
+  });
   scheduleRef.on('value', snap => {
     scheduleSnapshot = snap.val() || {};
   });
 
-  /******** Scheduler: run due scheduled orders (today) ********/
-  function todayKeyString(d = new Date()) {
-    // format YYYY-MM-DD for firebase keys
-    return d.toISOString().split('T')[0];
-  }
-
+  /******** Scheduler (unchanged) ********/
+  function todayKeyString(d = new Date()) { return d.toISOString().split('T')[0]; }
   async function processDueSchedulesFor(dateKey) {
     try {
       const snap = await scheduleRef.child(dateKey).once('value');
-      const data = snap.val() || {};
+      let data = snap.val() || {};
+      data = Object.fromEntries(Object.entries(data).filter(([_, o]) => (o.createdBy === currentUser.name)));
       const keys = Object.keys(data);
       if (!keys.length) return;
       for (const orderId of keys) {
         const scheduled = data[orderId];
-        // skip if already present in ordersSnapshot
         if (ordersSnapshot && ordersSnapshot[scheduled.orderId]) {
-          // cleanup scheduled entry
           await scheduleRef.child(dateKey).child(orderId).remove();
           continue;
         }
-
-        // create order payload for live orders (preserve info, but set timestamp to now)
         const orderPayload = Object.assign({}, scheduled);
-        // ensure backward-compat defaults for orders that predate quantity/perPrice
         if (!('quantity' in orderPayload)) orderPayload.quantity = 1;
         if (!('perPrice' in orderPayload)) orderPayload.perPrice = orderPayload.amount ? parseFloat((orderPayload.amount / orderPayload.quantity).toFixed(2)) : 0;
+        // ensure product defaults
+        if (!('product' in orderPayload) || !orderPayload.product) orderPayload.product = 'Karela Jamun Powder';
         orderPayload.timestamp = Date.now();
         orderPayload.status = scheduled.status || 'open';
         orderPayload.externalOrderId = scheduled.externalOrderId || '';
-        // ensure we mark it not as a scheduled-only payload
-        // save to orders
         await ordersRef.child(scheduled.orderId).set(orderPayload);
 
-        // update/create customer: move from scheduledOrders -> orders
+        // update/create customer node
         const phoneKey = scheduled.phone;
         const existing = customersSnapshot[phoneKey] || null;
         if (existing) {
@@ -597,11 +570,7 @@
           ordersMap[scheduled.orderId] = true;
           const scheduledMap = existing.scheduledOrders || {};
           if (scheduledMap[scheduled.orderId]) delete scheduledMap[scheduled.orderId];
-          const updateObj = {
-            orders: ordersMap,
-            scheduledOrders: scheduledMap,
-            tellicallerLast: scheduled.tellicaller
-          };
+          const updateObj = { orders: ordersMap, scheduledOrders: scheduledMap, tellicallerLast: scheduled.tellicaller };
           await customersRef.child(phoneKey).update(updateObj);
         } else {
           const newCust = {
@@ -619,34 +588,24 @@
           newCust.orders[scheduled.orderId] = true;
           await customersRef.child(phoneKey).set(newCust);
         }
-
-        // remove scheduled entry
         await scheduleRef.child(dateKey).child(orderId).remove();
-        try{ afterOrderPlaced(); }catch(e){}
       }
       showToast(`${keys.length} scheduled order(s) moved to live orders for ${dateKey}`, 4000);
     } catch (err) {
       console.error('Error processing scheduled orders for', dateKey, err);
     }
   }
-
-  // automatically process today's scheduled orders when page loads and whenever today's schedule changes
   const todayKey = todayKeyString();
-  // process once on load
   processDueSchedulesFor(todayKey).catch(()=>{});
-  // also watch for changes to today's schedule and process any newly added items
   scheduleRef.child(todayKey).on('value', snap=>{
-    if (snap.exists()) {
-      processDueSchedulesFor(todayKey).catch(()=>{});
-    }
+    if (snap.exists()) processDueSchedulesFor(todayKey).catch(()=>{});
   });
 
-  /******** Actions ********/
+  /******** Actions: dispatched/save external id/close/cancel ********/
   async function toggleDispatched(orderId) {
     const order = ordersSnapshot[orderId];
     if (!order) return;
-    // locked if closed
-    if (order.status === 'closed') return;
+    if (order.status === 'closed' || order.status === 'cancelled') return;
     const newStatus = (order.status === 'dispatched') ? 'open' : 'dispatched';
     const upd = { status: newStatus };
     if (newStatus === 'dispatched') upd.dispatchedAt = Date.now();
@@ -662,7 +621,6 @@
   }
 
   async function closeOrderWithType(orderId, type, remark='') {
-    // type is "Delivered" or "RTO"
     if (!orderId) return;
     if (type === 'RTO' && (!remark || !remark.trim())) { alert('Remark is required for RTO'); return; }
     const updates = { status: 'closed', closedType: type, deliveredAt: Date.now() };
@@ -671,27 +629,38 @@
     showToast('Order closed as ' + type);
   }
 
-  /******** Add Order modal handling ********/
+  async function cancelOrder(orderId, reason='') {
+    if (!orderId) return;
+    const updates = { status: 'cancelled', cancelled: true, cancelledAt: Date.now(), cancelledReason: reason || '' };
+    await ordersRef.child(orderId).update(updates);
+    showToast('Order marked Cancelled');
+  }
+
+  /******** Add Order modal handling (now includes product) ********/
   btnAddOrder.addEventListener('click', ()=>{
+    // sync small product icon beside select
+    try {
+      const psi = document.getElementById('productSelectIcon');
+      const psel = document.getElementById('productSelect');
+      function updateProductIcon(){ if(!psi || !psel) return; psi.src = (psel.value && psel.value.toLowerCase().includes('men')) ? 'product2.png' : 'product1.png'; }
+      updateProductIcon();
+      if (psel) psel.addEventListener('change', updateProductIcon);
+    } catch(e){}
+
     orderForm.reset();
     fTellicaller.value = currentUser.name || '';
     fStatus.value = 'open';
-    // set scheduled date to today's date by default
     try {
       const today = new Date().toISOString().split('T')[0];
       fScheduledDate.value = today;
     } catch(e) { fScheduledDate.value = ''; }
+    // default product selection
+    try { document.getElementById('productSelect').value = 'Karela Jamun Powder'; } catch(e){}
     modalBackdrop.style.display = 'flex';
     modalBackdrop.classList.remove('hidden');
   });
-  modalClose.addEventListener('click', ()=>{
-    modalBackdrop.style.display = 'none';
-    modalBackdrop.classList.add('hidden');
-  });
-  btnCancel.addEventListener('click', ()=>{
-    modalBackdrop.style.display = 'none';
-    modalBackdrop.classList.add('hidden');
-  });
+  modalClose.addEventListener('click', ()=>{ modalBackdrop.style.display = 'none'; modalBackdrop.classList.add('hidden'); });
+  btnCancel.addEventListener('click', ()=>{ modalBackdrop.style.display = 'none'; modalBackdrop.classList.add('hidden'); });
 
   orderForm.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -708,6 +677,7 @@
     const amount = parseFloat((perPrice * quantity).toFixed(2)) || parseFloat(fAmount.value) || 0;
     const status = fStatus.value;
     const scheduledDateVal = fScheduledDate.value ? fScheduledDate.value : new Date().toISOString().split('T')[0];
+    const product = (fProduct && fProduct.value) ? fProduct.value : 'Karela Jamun Powder';
 
     if (!firstName || !phone || isNaN(amount)) { alert('Please fill required fields: First name, Phone, Amount'); return; }
 
@@ -720,13 +690,14 @@
       address, city, state, pincode,
       amount, status,
       externalOrderId: '',
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      product: product,
+      cancelled: false
     };
 
     try {
       const todayKeyLocal = new Date().toISOString().split('T')[0];
       if (scheduledDateVal && scheduledDateVal !== todayKeyLocal) {
-        // save into schedule node grouped by date
         const schedPayload = Object.assign({}, payload, {
           scheduledDate: scheduledDateVal,
           scheduledAt: Date.now(),
@@ -734,7 +705,6 @@
         });
         await scheduleRef.child(scheduledDateVal).child(orderId).set(schedPayload);
 
-        // also update/create customer node to track scheduledOrders (optional but useful)
         const phoneKey = phone;
         const existing = customersSnapshot[phoneKey] || null;
         if (existing) {
@@ -770,14 +740,11 @@
         return;
       }
 
-      // immediate order -> same flow as before
       await ordersRef.child(orderId).set(payload);
 
-      // update/create customer node for immediate order
       const phoneKey = phone;
       const existing = customersSnapshot[phoneKey] || null;
       if (existing) {
-        // add order id to customer's orders map and update basic fields
         const ordersMap = existing.orders || {};
         ordersMap[orderId] = true;
         const updateObj = {
@@ -806,24 +773,19 @@
       modalBackdrop.style.display = 'none';
       modalBackdrop.classList.add('hidden');
       showToast('Order saved');
-      try{ afterOrderPlaced(); }catch(e){ console.error(e); }
     } catch (err) {
       console.error(err);
       alert('Error saving order: ' + (err.message || err));
     }
   });
 
-  /******** Customer modal: professional info + order history ********/
-  async function openCustomerModal(phone, highlightOrderId = null) {
+  /******** Customer modal: order history + cancel button ********/
+  function openCustomerModal(phone, highlightOrderId = null) {
     const customer = customersSnapshot[phone] || null;
-    if (!customer) {
-      alert('No customer record found for phone: ' + phone);
-      return;
-    }
+    if (!customer) { alert('No customer record found for phone: ' + phone); return; }
     custTitle.textContent = `Customer — ${customer.firstName || ''} ${customer.lastName || ''}`;
     customerDetails.innerHTML = '';
 
-    // Customer Info Card
     const infoCard = document.createElement('div');
     infoCard.className = 'p-5 rounded-xl bg-gradient-to-r from-green-50 to-white shadow-md';
     infoCard.innerHTML = `
@@ -836,19 +798,14 @@
         <div><b>State:</b> ${customer.state || '-'}</div>
         <div><b>Pincode:</b> ${customer.pincode || '-'}</div>
         <div class="col-span-2"><b>Address:</b> ${customer.address || '-'}</div>
-      </div>
-    `;
+      </div>`;
     customerDetails.appendChild(infoCard);
 
-    // Order History Card
     const histCard = document.createElement('div');
     histCard.className = 'p-5 rounded-xl bg-white shadow-md';
     histCard.innerHTML = `<h4 class="font-semibold text-lg mb-3 text-gray-800">📦 Order History</h4>`;
 
-    const histList = document.createElement('div');
-    histList.className = 'space-y-3';
-
-    // collect orders for this phone
+    const histList = document.createElement('div'); histList.className = 'space-y-3';
     const ordersArr = Object.values(ordersSnapshot || {}).filter(o => o.phone === phone).sort((a,b)=>b.timestamp - a.timestamp);
 
     if (!ordersArr.length) {
@@ -856,105 +813,105 @@
     } else {
       ordersArr.forEach(order => {
         const wrap = document.createElement('div');
+        // different style if cancelled
         wrap.className = 'p-4 border rounded-lg bg-white hover:shadow-md transition';
+        if (order.status === 'cancelled' || order.cancelled) wrap.classList.add('order-cancelled');
 
-        // header row
-        const header = document.createElement('div');
-        header.className = 'flex justify-between items-center mb-2';
+        const header = document.createElement('div'); header.className = 'flex justify-between items-center mb-2';
         const left = document.createElement('div');
         left.innerHTML = `<div class="font-semibold text-lg">₹ ${order.amount != null ? Number(order.amount).toFixed(2) : '0.00'}</div>
                           <div class="text-xs text-gray-500">${humanDate(order.timestamp)}</div>`;
         const right = document.createElement('div');
         const statusLabel = order.status === 'closed' ? (order.closedType || 'Closed') : (order.status || 'Open');
-        // color-coded small badge
-        const badge = document.createElement('span');
-        badge.className = 'px-2 py-0.5 rounded text-xs text-white';
+        const badge = document.createElement('span'); badge.className = 'px-2 py-0.5 rounded text-xs text-white';
         if (order.status === 'closed') {
-          if (order.closedType === 'Delivered') badge.style.background = '#10b981';
-          else badge.style.background = '#ef4444';
+          if (order.closedType === 'Delivered') badge.style.background = '#10b981'; else badge.style.background = '#ef4444';
         } else if (order.status === 'dispatched') badge.style.background = '#0ea5a4';
+        else if (order.status === 'cancelled') badge.style.background = '#6b7280';
         else badge.style.background = '#f97316';
-        badge.textContent = statusLabel;
+        badge.textContent = (order.status === 'cancelled' ? 'Cancelled' : statusLabel);
         right.appendChild(badge);
+        header.appendChild(left); header.appendChild(right); wrap.appendChild(header);
 
-        header.appendChild(left);
-        header.appendChild(right);
-        wrap.appendChild(header);
-
-        // body
-        const body = document.createElement('div');
-        body.className = 'text-sm text-gray-700';
+        const body = document.createElement('div'); body.className = 'text-sm text-gray-700';
         const dispQty = order.quantity || 1;
         const perPriceDisp = (('perPrice' in order) ? order.perPrice : (order.amount && dispQty ? Number((order.amount/dispQty).toFixed(2)) : 0));
-        body.innerHTML = `<div><b>Tellecaller:</b> ${order.tellicaller || '-'}</div>
+        body.innerHTML = `<div><b>Product:</b> ${order.product || 'Karela Jamun Powder'}</div>
+                          <div><b>Tellecaller:</b> ${order.tellicaller || '-'}</div>
                           <div><b>Order ID:</b> ${(order.externalOrderId && order.externalOrderId !== '') ? order.externalOrderId : 'Not Defined'}</div>
                           <div><b>Quantity:</b> ${dispQty} pcs</div>
-                          <div><b>Per Piece:</b> ₹ ${perPriceDisp != null ? Number(perPriceDisp).toFixed(2) : '0.00'}</div>
-
-                          <div class="text-xs text-gray-500 mt-1"><b>DB ID:</b> </div>`;
+                          <div><b>Per Piece:</b> ₹ ${perPriceDisp != null ? Number(perPriceDisp).toFixed(2) : '0.00'}</div>`;
         wrap.appendChild(body);
 
-        // actions if order not closed
-        if (order.status !== 'closed') {
-          const actions = document.createElement('div');
-          actions.className = 'mt-3 flex flex-wrap gap-2 items-center';
-
-          const idInp = document.createElement('input');
-          idInp.placeholder = 'External Order ID';
-          idInp.className = 'border p-2 rounded text-sm';
-          idInp.value = order.externalOrderId || '';
-
-          const saveIdBtn = document.createElement('button');
-          saveIdBtn.className = 'px-3 py-1 bg-green-600 text-white rounded text-sm';
-          saveIdBtn.textContent = 'Save ID';
-          saveIdBtn.addEventListener('click', ()=>{ if (idInp.value && idInp.value.trim()) saveExternalOrderId(order.orderId, idInp.value.trim()); });
-
-          const deliveredBtn = document.createElement('button');
-          deliveredBtn.className = 'px-3 py-1 bg-blue-600 text-white rounded text-sm';
-          deliveredBtn.textContent = 'Mark Delivered';
-          deliveredBtn.addEventListener('click', ()=> closeOrderWithType(order.orderId, 'Delivered'));
-
-          const rtoInp = document.createElement('input');
-          rtoInp.placeholder = 'Remark for RTO';
-          rtoInp.className = 'border p-2 rounded text-sm';
-
-          const rtoBtn = document.createElement('button');
-          rtoBtn.className = 'px-3 py-1 bg-red-600 text-white rounded text-sm';
-          rtoBtn.textContent = 'Mark RTO';
+        if (order.status !== 'closed' && order.status !== 'cancelled') {
+          const actions = document.createElement('div'); actions.className = 'mt-3 flex flex-wrap gap-2 items-center';
+          const rtoInp = document.createElement('input'); rtoInp.placeholder = 'Remark for RTO'; rtoInp.className = 'border p-2 rounded text-sm';
+          const rtoBtn = document.createElement('button'); rtoBtn.className = 'px-3 py-1 bg-red-600 text-white rounded text-sm'; rtoBtn.textContent = 'Mark RTO';
           rtoBtn.addEventListener('click', ()=> {
             if (!rtoInp.value || !rtoInp.value.trim()) { alert('Please enter remark for RTO'); return; }
             closeOrderWithType(order.orderId, 'RTO', rtoInp.value.trim());
           });
 
-          actions.appendChild(idInp);
-          actions.appendChild(saveIdBtn);
-          actions.appendChild(deliveredBtn);
-          actions.appendChild(rtoInp);
-          actions.appendChild(rtoBtn);
-          // ✅ NEW OOD BUTTON
-          const oodBtn = document.createElement('button');
-          oodBtn.className = 'px-3 py-1 bg-purple-600 text-white rounded text-sm';
-          oodBtn.textContent = 'Mark OOD';
-          oodBtn.addEventListener('click', async ()=> {
-            await ordersRef.child(order.orderId).update({
-              oodStatus: "today",
-              oodMarkedAt: Date.now(),
-              //oodTellicaller: currentUser.name,
-              oodRemark: "Call"
-            });
-            showToast("Order marked Out Of Delivery");
+          // Cancel button (red border + grey fill)
+          const cancelBtn = document.createElement('button');
+          cancelBtn.className = 'px-3 py-1 rounded text-sm';
+          cancelBtn.style.border = '2px solid #dc2626';
+          cancelBtn.style.background = '#f3f4f6';
+          cancelBtn.style.color = '#dc2626';
+          cancelBtn.textContent = 'Cancel Order';
+          cancelBtn.addEventListener('click', ()=> {
+            if (!confirm('Are you sure you want to cancel this order?')) return;
+            cancelOrder(order.orderId, 'Cancelled by tellicaller');
           });
-          actions.appendChild(oodBtn);
-    
+
+          actions.appendChild(rtoInp); actions.appendChild(rtoBtn); actions.appendChild(cancelBtn);
+
+          // Admin-only extra controls: External ID, Save ID, Mark Delivered, Mark OOD
+          try {
+            if (filterOwner) {
+              const idInp = document.createElement('input');
+              idInp.placeholder = 'External Order ID';
+              idInp.className = 'border p-2 rounded text-sm';
+              idInp.value = order.externalOrderId || '';
+
+              const saveIdBtn = document.createElement('button');
+              saveIdBtn.className = 'px-3 py-1 bg-green-600 text-white rounded text-sm';
+              saveIdBtn.textContent = 'Save ID';
+              saveIdBtn.addEventListener('click', ()=>{ if (idInp.value && idInp.value.trim()) saveExternalOrderId(order.orderId, idInp.value.trim()); });
+
+              const deliveredBtn = document.createElement('button');
+              deliveredBtn.className = 'px-3 py-1 bg-blue-600 text-white rounded text-sm';
+              deliveredBtn.textContent = 'Mark Delivered';
+              deliveredBtn.addEventListener('click', ()=> closeOrderWithType(order.orderId, 'Delivered'));
+
+              const oodBtn = document.createElement('button');
+              oodBtn.className = 'px-3 py-1 bg-purple-600 text-white rounded text-sm';
+              oodBtn.textContent = 'Mark OOD';
+              oodBtn.addEventListener('click', async ()=> {
+                await ordersRef.child(order.orderId).update({
+                  oodStatus: 'today',
+                  oodMarkedAt: Date.now(),
+                  oodRemark: 'Call'
+                });
+                showToast('Order marked Out Of Delivery');
+              });
+
+              actions.appendChild(idInp);
+              actions.appendChild(saveIdBtn);
+              actions.appendChild(deliveredBtn);
+              actions.appendChild(oodBtn);
+            }
+          } catch(e){}
 
           wrap.appendChild(actions);
         } else {
-          // if closed and RTO show remark
-          if (order.closedType === 'RTO') {
-            const remarkDiv = document.createElement('div');
-            remarkDiv.className = 'mt-2 text-sm text-red-700';
-            remarkDiv.innerHTML = `<b>RTO Remark:</b> ${order.remark || '-'}`;
-            wrap.appendChild(remarkDiv);
+          if (order.status === 'cancelled') {
+            const rem = document.createElement('div'); rem.className = 'mt-2 text-sm text-gray-700';
+            rem.innerHTML = `<b>Cancelled Reason:</b> ${order.cancelledReason || order.remark || '-'}`;
+            wrap.appendChild(rem);
+          } else if (order.closedType === 'RTO') {
+            const remarkDiv = document.createElement('div'); remarkDiv.className = 'mt-2 text-sm text-red-700';
+            remarkDiv.innerHTML = `<b>RTO Remark:</b> ${order.remark || '-'}`; wrap.appendChild(remarkDiv);
           }
         }
 
@@ -965,7 +922,6 @@
     histCard.appendChild(histList);
     customerDetails.appendChild(histCard);
 
-    // show modal
     customerBackdrop.style.display = 'flex';
     customerBackdrop.classList.remove('hidden');
   }
@@ -975,125 +931,47 @@
 
   /******** Filters, search & listeners ********/
   searchInput.addEventListener('input', ()=> renderOrders(searchInput.value));
-  filterOwner.addEventListener('change', ()=> renderOrders(searchInput.value));
   filterStatus.addEventListener('change', ()=> renderOrders(searchInput.value));
   filterFrom.addEventListener('change', ()=> renderOrders(searchInput.value));
   filterTo.addEventListener('change', ()=> renderOrders(searchInput.value));
+  if (filterOwner) filterOwner.addEventListener('change', ()=> renderOrders(searchInput.value));
 
-  /******** Logout ********/
-  btnLogout.addEventListener('click', ()=> {
-    localStorage.removeItem('currentTellicaller');
-    // optional: force navigation to login
-    window.location.href = 'index.html';
+  /******** Logout & misc ********/
+  document.addEventListener('DOMContentLoaded', function() {
+    const btnLogout = document.getElementById('btnLogout');
+    if (btnLogout) {
+      btnLogout.addEventListener('click', ()=> {
+        localStorage.removeItem('currentTellicaller');
+        window.location.href = 'index.html';
+      });
+    }
+    // ensure modal close by backdrop
+    const modalBackdropEl = document.getElementById('modalBackdrop');
+    if (modalBackdropEl) modalBackdropEl.addEventListener('click', (e)=> { if (e.target === modalBackdropEl) { modalBackdropEl.style.display='none'; modalBackdropEl.classList.add('hidden'); } });
+    const customerBackdropEl = document.getElementById('customerBackdrop');
+    if (customerBackdropEl) customerBackdropEl.addEventListener('click', (e)=> { if (e.target === customerBackdropEl) { customerBackdropEl.style.display='none'; customerBackdropEl.classList.add('hidden'); } });
   });
 
   
-  // initial render (in case snapshots are loaded already)
-  // snapshot listeners above will call renderOrders when data arrives
-
-  
-
-/* Mobile nav hamburger & behavior */
-document.addEventListener('DOMContentLoaded', function(){
-  const nav = document.querySelector('nav');
-  if (!nav) return;
-  // Create hamburger
-  const hamburger = document.createElement('button');
-  hamburger.id = 'navHamburger';
-  hamburger.innerHTML = '&#9776;';
-  hamburger.setAttribute('aria-label','Toggle menu');
-  hamburger.className = 'sm:hidden text-white';
-  // insert hamburger after logo block (first child of nav inner container)
-  const wrapper = nav.querySelector('.max-w-7xl');
-  if (wrapper) {
-    const left = wrapper.querySelector('div');
-    if (left && left.parentNode) {
-      left.parentNode.insertBefore(hamburger, left.nextSibling);
-    } else {
-      wrapper.insertBefore(hamburger, wrapper.firstChild);
-    }
-  }
-  const navControls = document.getElementById('navControls');
-  if (!navControls) return;
-  // default collapsed on mobile
-  function updateCollapsed() {
-    if (window.innerWidth <= 640) navControls.classList.add('collapsed');
-    else navControls.classList.remove('collapsed');
-  }
-  updateCollapsed();
-  window.addEventListener('resize', updateCollapsed);
-  hamburger.addEventListener('click', function(){ navControls.classList.toggle('collapsed'); });
-
-  // Improve tap targets for close buttons (add title)
-  const modalClose = document.getElementById('modalClose');
-  const custClose = document.getElementById('custClose');
-  if (modalClose) modalClose.setAttribute('title','Close');
-  if (custClose) custClose.setAttribute('title','Close');
-
-  // Ensure modals dismiss when backdrop clicked (but not when clicking inside)
-  const modalBackdrop = document.getElementById('modalBackdrop');
-  const customerBackdrop = document.getElementById('customerBackdrop');
-  if (modalBackdrop) modalBackdrop.addEventListener('click', function(e){ if (e.target === modalBackdrop) { modalBackdrop.style.display='none'; modalBackdrop.classList.add('hidden'); } });
-  if (customerBackdrop) customerBackdrop.addEventListener('click', function(e){ if (e.target === customerBackdrop) { customerBackdrop.style.display='none'; customerBackdrop.classList.add('hidden'); } });
-});
-
-
-
-  // ---------- RTO PINCODE AUTOFILL (India Post API) ----------
-  async function autofillFromPincode(pin) {
-    try {
-      if (!/^\d{6}$/.test(pin)) {
-        showToast('❌ Invalid Pincode (must be 6 digits)');
-        document.getElementById('city').value = '';
-        document.getElementById('state').value = '';
-        return;
-      }
-      const resp = await fetch('https://api.postalpincode.in/pincode/' + encodeURIComponent(pin));
-      const data = await resp.json();
-      if (Array.isArray(data) && data.length && data[0].Status === 'Success' && data[0].PostOffice && data[0].PostOffice.length) {
-        const po = data[0].PostOffice[0];
-        // prefer District, fallback to Region/Block if District missing
-        const cityVal = po.District || po.Region || po.Block || po.Taluk || '';
-        const stateVal = po.State || '';
-        document.getElementById('city').value = cityVal;
-        document.getElementById('state').value = stateVal;
-        showToast('✅ City & State autofilled from Pincode');
-      } else {
-        document.getElementById('city').value = '';
-        document.getElementById('state').value = '';
-        showToast('❌ Pincode not found');
-      }
-    } catch (err) {
-      console.error('Pincode autofill error:', err);
-      showToast('❌ Error fetching pincode info');
-    }
-  }
-
-  // attach blur listener to pincode input (guard against missing element)
-  (function attachPincodeListener(){
-    const p = document.getElementById('pincode');
-    if (!p) return;
-    p.setAttribute('inputmode','numeric');
-    p.setAttribute('pattern','[0-9]*');
-    p.addEventListener('blur', function(e){
-      const v = (e.target.value || '').trim();
-      if (!v) return;
-      autofillFromPincode(v);
-    });
-    // optional: live check when 6 digits entered
-    p.addEventListener('input', function(e){
-      const v = (e.target.value || '').replace(/\\D/g, '').slice(0,6);
-      if (e.target.value !== v) e.target.value = v;
-      if (v.length === 6) {
-        autofillFromPincode(v);
+  // Pincode auto-fill
+  if (fPincode) {
+    fPincode.addEventListener('input', ()=>{
+      const pin = fPincode.value.trim();
+      if (pin.length === 6) {
+        fetch(`https://api.postalpincode.in/pincode/${pin}`)
+        .then(res=>res.json())
+        .then(data=>{
+          if (Array.isArray(data) && data[0].Status === 'Success') {
+            const po = data[0].PostOffice && data[0].PostOffice[0];
+            if (!po) return;
+            fCity.value = po.District || '';
+            fState.value = po.State || '';
+          }
+        }).catch(err=>console.error('Pincode fetch error', err));
       }
     });
-  })();
-  // ---------- end RTO PINCODE AUTOFILL ----------
+  }
 
-</script>
-<script>
-window.onload = function(){ showSection('myOrdersSection'); };
 </script>
 </body>
 </html>

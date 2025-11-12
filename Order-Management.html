@@ -49,7 +49,7 @@
     .product-men { background: linear-gradient(90deg,#eef2ff,#f5f3ff); border-left:4px solid #7c3aed; }
     .order-cancelled { background:#f3f4f6; border:2px solid #dc2626; } /* Grey fill + Red border as requested */
 
-    .product-pill { display:inline-flex; align-items:center; gap:8px; padding:4px 8px; border-radius:999px; font-size:12px; font-weight:600; }
+    .product-pill { display:inline-flex; align-items:center; gap:8px; padding:4px 8px; border-radius:999px; font-size:12px; font-weight:600; }\n    .product-pill svg { width:18px; height:18px; }\n\n    /* Highlighting for RTO and Delivered orders */\n    .highlight-rto { border-left: 6px solid #ef4444 !important; background: rgba(254,202,202,0.10) !important; box-shadow: 0 6px 18px rgba(239,68,68,0.06); }\n    .highlight-delivered { border-left: 6px solid #10b981 !important; background: rgba(220,255,226,0.10) !important; box-shadow: 0 6px 18px rgba(16,185,129,0.06); }
     .product-pill svg { width:18px; height:18px; }
 
     /* small responsive tweaks */
@@ -74,7 +74,41 @@
       cursor: pointer;
     }
 
-  </style>
+  
+    /* Status icons (left-inside) */
+    .status-left { display:flex; align-items:center; justify-content:center; width:48px; min-width:48px; height:48px; border-radius:10px; margin-right:12px; box-shadow: 0 8px 20px rgba(2,6,23,0.06); flex-shrink:0; }
+    .status-left svg { width:20px; height:20px; display:block; }
+    /* colored backgrounds with white icon inside for good contrast */
+    .status-icon-rto { background: #ef4444; color: #ffffff; }
+    .status-icon-delivered { background: #10b981; color: #ffffff; }
+    .status-icon-intransit { background: #059669; color: #ffffff; }
+    .status-icon-undispatched { background: #64748b; color: #ffffff; }
+    /* ensure the row keeps items centered vertically */
+    .order-card-relative { position: relative; overflow: visible; align-items: center; }
+    /* stronger left border when highlighted */
+    .highlight-rto { border-left-width: 6px !important; border-left-color: #ef4444 !important; }
+    .highlight-delivered { border-left-width: 6px !important; border-left-color: #10b981 !important; }
+
+</style>
+
+<style>
+/* Status icon basics */
+.status-icon { width:28px; height:28px; display:flex; align-items:center; justify-content:center; border-radius:50%; }
+.status-icon.clickable { cursor:pointer; }
+/* undispatched: grey outline */
+.status-icon-undispatched { background: #f0f0f0; border: 1px solid #cfcfcf; }
+/* in-transit / dispatched: simple green */
+.status-icon-intransit { background: #2ecc71; }
+/* delivered: green tick */
+.status-icon-delivered { background: #2ecc71; }
+/* RTO: red cross */
+.status-icon-rto { background: #e74c3c; }
+/* Glowing rows */
+.glow-rto { box-shadow: 0 0 0 3px rgba(231,76,60,0.15), 0 6px 18px rgba(231,76,60,0.08) inset; border-radius:8px; }
+.glow-delivered { box-shadow: 0 0 0 3px rgba(46,204,113,0.15), 0 6px 18px rgba(46,204,113,0.08) inset; border-radius:8px; }
+/* make the status icon stand out slightly */
+.row .status-icon { margin-left:6px; }
+</style>
 </head>
 <body class="font-sans text-gray-800 min-h-screen">
 
@@ -194,6 +228,7 @@
       <div id="customerDetails" class="space-y-6"></div>
 
       <div class="flex justify-end mt-4">
+        <button id="btnReorder" class="px-5 py-2 rounded-lg bg-green-600 text-white shadow hover:bg-green-700 transition mr-3">Reorder</button>
         <button id="custClose2" class="px-5 py-2 rounded-lg bg-red-500 text-white shadow hover:bg-red-600 transition">Close</button>
       </div>
     </div>
@@ -420,6 +455,80 @@
         const row = document.createElement('div');
         // base classes + product-specific
         row.className = 'flex items-center justify-between p-3 rounded-md border mb-2 shadow-sm hover:shadow-lg transition';
+        // ensure card is positioned for absolute status icon
+        row.classList.add('order-card-relative');
+        // create left-side status icon container (inside the card, before content)
+        const statusWrap = document.createElement('div');
+        statusWrap.className = 'status-left';
+        // Decide icon & style:
+        // Simplified visual-only icons:
+        // - Click toggles between undispatched (grey) and dispatched (simple green circle) visually only.
+        // - No database writes or status changes — this purely changes classes and SVG shown.
+        // - RTO and Delivered keep their special icons and get glowing boundary styles.
+        const setUndispatchedIcon = () => {
+          statusWrap.className = 'status-icon status-icon-undispatched clickable';
+          statusWrap.setAttribute('title', 'Undispatched (click to toggle)');
+          statusWrap.innerHTML = `
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="12" cy="12" r="7" fill="white" />
+            </svg>`;
+        };
+        const setDispatchedIcon = () => {
+          statusWrap.className = 'status-icon status-icon-intransit clickable';
+          statusWrap.setAttribute('title', 'Dispatched (click to toggle)');
+          statusWrap.innerHTML = `
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="12" cy="12" r="5" fill="white" />
+            </svg>`;
+        };
+        const setRtoIcon = () => {
+          statusWrap.className = 'status-icon status-icon-rto';
+          statusWrap.setAttribute('title', 'RTO');
+          statusWrap.innerHTML = `
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+              <path d="M7.5 7.5L16.5 16.5M7.5 16.5L16.5 7.5" stroke="white" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>`;
+        };
+        const setDeliveredIcon = () => {
+          statusWrap.className = 'status-icon status-icon-delivered';
+          statusWrap.setAttribute('title', 'Delivered');
+          statusWrap.innerHTML = `
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+              <path d="M20 6L9 17L4 12" stroke="white" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>`;
+        };
+
+        // Initial render logic (respecting order.status / externalOrderId)
+        if (order.status === 'closed' && order.closedType === 'RTO') {
+          setRtoIcon();
+          row.classList.add('glow-rto');
+        } else if (order.status === 'closed' && order.closedType === 'Delivered') {
+          setDeliveredIcon();
+          row.classList.add('glow-delivered');
+        } else if (!order.externalOrderId || order.externalOrderId === '') {
+          setUndispatchedIcon();
+        } else {
+          // has external ID but not closed -> show simple green (dispatched-like)
+          setDispatchedIcon();
+        }
+
+        // Add click behavior: purely visual toggle between undispatched <-> dispatched.
+        statusWrap.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          // don't toggle visual for closed or cancelled orders (they have glow and are final)
+          if (order.status === 'closed' || order.status === 'cancelled') return;
+          if (statusWrap.classList.contains('status-icon-undispatched')) {
+            setDispatchedIcon();
+          } else if (statusWrap.classList.contains('status-icon-intransit')) {
+            setUndispatchedIcon();
+          } else {
+            // fallback: toggle to dispatched
+            setDispatchedIcon();
+          }
+        });// attach statusWrap as the left-most child so it's inside the card at left
+        if (row.firstChild) row.insertBefore(statusWrap, row.firstChild);
+        else if (row.firstChild) row.insertBefore(statusWrap, row.firstChild); else row.appendChild(statusWrap);
+    
         if (order.status === 'cancelled' || order.closedType === 'Cancelled') {
           row.classList.add('order-cancelled');
         } else if (product === 'Men Wellness') {
@@ -973,5 +1082,374 @@
   }
 
 </script>
+
+<script>
+// Reorder button logic: when clicked, populate Add Order modal with customer data and open it.
+// The customer details pane renders inside #customerDetails; to support this, when rendering customer details
+// make sure each data point is stored as data- attributes or we parse values from DOM nodes.
+// We'll implement a simple extraction: look for elements inside #customerDetails with ids we can map to form fields.
+// If not present, the view details normally contains Name, Phone, Address, City, State, Pincode, Product, Quantity, Per Price.
+// We'll attempt to find them by common selectors; if not found, we try to use dataset from the clicked order (data-order-json).
+
+function openAddOrderModalWithData(details) {
+  // Close the customer details modal if it's open so only Add Order modal is visible
+  try {
+    const custBack = document.getElementById('customerBackdrop');
+    if (custBack && !custBack.classList.contains('hidden')) custBack.classList.add('hidden');
+    // ensure any other conflicting modals are hidden
+    const mb = document.getElementById('modalBackdrop');
+    if (mb) mb.classList.remove('hidden');
+    // briefly delay to allow DOM to reflow so Add Order modal is on top
+    setTimeout(()=>{ if (mb) mb.style.zIndex = 99999; }, 50);
+  } catch(e){ console.warn('reorder: modal hide error', e); }
+
+  // open modal
+  document.getElementById('modalBackdrop').classList.remove('hidden');
+  // set modal title to Reorder
+  document.getElementById('modalTitle').innerText = 'Reorder - Edit & Place Order';
+  // populate fields if present
+  const setIf = (id, val) => { const el = document.getElementById(id); if (!el) return; el.value = val || ''; el.dispatchEvent(new Event('input')); };
+  setIf('firstName', details.firstName || details.name || '');
+  setIf('lastName', details.lastName || details.lastName || '');
+  setIf('phone', details.phone || details.mobile || '');
+  setIf('tellicaller', details.tellicaller || ''); // keep the current tellicaller blank if not provided
+  setIf('address', details.address || details.addressLine || '');
+  setIf('city', details.city || '');
+  setIf('state', details.state || '');
+  setIf('pincode', details.pincode || details.pin || '');
+  setIf('perPrice', details.perPrice || details.price || '');
+  setIf('quantity', details.quantity || details.qty || 1);
+  // compute amount if perPrice and quantity present
+  try {
+    const p = parseFloat(document.getElementById('perPrice').value) || 0;
+    const q = parseInt(document.getElementById('quantity').value) || 1;
+    document.getElementById('amount').value = (p * q).toFixed(2);
+  } catch(e){}
+  // product select
+  if (details.product) {
+    const prod = document.getElementById('productSelect');
+    if (prod) prod.value = details.product;
+  }
+  // focus phone field for quick edit
+  const ph = document.getElementById('phone'); if (ph) ph.focus();
+}
+
+// Attach click handler to Reorder button in customer modal
+
+document.addEventListener('click', function(e){
+  if (e.target && (e.target.id === 'btnReorder' || (e.target.closest && e.target.closest('#btnReorder')))) {
+    const container = document.getElementById('customerDetails');
+    const details = {};
+    if (!container) { openAddOrderModalWithData(details); return; }
+
+    // 1) If data-order-json is present on container, prefer it.
+    if (container.dataset && container.dataset.orderJson) {
+      try { Object.assign(details, JSON.parse(container.dataset.orderJson)); } catch(e){ console.warn('parse dataset orderJson', e); }
+    }
+
+    const text = container.innerText || '';
+    // 2) Name extraction: look for headings or labels
+    const nameSelectors = ['h1','h2','h3','h4','.font-bold','.text-xl','.text-2xl'];
+    let nameFound = false;
+    for (const sel of nameSelectors) {
+      const el = container.querySelector(sel);
+      if (el && el.innerText && el.innerText.trim().length>1) {
+        // If heading contains 'Customer' word, take the next text or the part after '—' if present
+        let t = el.innerText.trim();
+        if (/Customer\s*—/i.test(t)) {
+          const parts = t.split('—'); if (parts.length>1) t = parts[1].trim();
+        }
+        details.firstName = t.split('\n')[0].trim();
+        nameFound = true; break;
+      }
+    }
+    // fallback: try label 'First Name' in the text
+    if (!nameFound) {
+      const fnMatch = text.match(/First\s*Name\s*[:\-]?\s*([A-Za-z\s.'-]{2,})/i);
+      if (fnMatch) details.firstName = fnMatch[1].trim();
+    }
+
+    // 3) Address extraction: look for label 'Address' or long paragraph with commas
+    const addrEl = Array.from(container.querySelectorAll('p,div,span')).find(n => /Address\b|Address\s*:/i.test(n.innerText||''));
+    if (addrEl) {
+      // remove label part if present
+      const val = addrEl.innerText.replace(/Address\s*[:\-]?/i,'').trim();
+      details.address = val;
+    } else {
+      // fallback: find the longest text block (likely address)
+      const longEl = Array.from(container.querySelectorAll('p,div,span')).sort((a,b)=> (b.innerText||'').length - (a.innerText||'').length)[0];
+      if (longEl && (longEl.innerText||'').length > 30) details.address = longEl.innerText.trim();
+    }
+
+    // 4) Phone
+    if (!details.phone) {
+      const phoneMatch = text.match(/(\+?\d{10,13})/);
+      if (phoneMatch) details.phone = phoneMatch[1];
+    }
+    // 5) City / State / Pincode
+    if (!details.pincode) {
+      const pinMatch = text.match(/\b(\d{6})\b/);
+      if (pinMatch) details.pincode = pinMatch[1];
+    }
+    if (!details.city) {
+      const cityMatch = text.match(/City\s*[:\-]?\s*([A-Za-z\s]+)/i);
+      if (cityMatch) details.city = cityMatch[1].trim();
+    }
+    if (!details.state) {
+      const stateMatch = text.match(/State\s*[:\-]?\s*([A-Za-z\s]+)/i);
+      if (stateMatch) details.state = stateMatch[1].trim();
+    }
+
+    // 6) Product/Price/Qty heuristics (unchanged)
+    const prodEl = Array.from(container.querySelectorAll('div, p, span')).find(n=>/(product|karela|men wellness|per price|per piece|quantity)/i.test(n.innerText||''));
+    if (prodEl) {
+      const t = prodEl.innerText.trim();
+      if (/karela/i.test(t)) details.product = 'Karela Jamun Powder';
+      else if (/men wellness/i.test(t)) details.product = 'Men Wellness';
+      const qtyMatch = t.match(/(Qty|Quantity)\s*[:\-]?\s*(\d+)/i);
+      if (qtyMatch) details.quantity = qtyMatch[2];
+      const priceMatch = t.match(/(Per Price|Price|₹|INR)\s*[:\-]?\s*([0-9,.]+)/i);
+      if (priceMatch) details.perPrice = priceMatch[2].replace(/,/g,'');
+    }
+
+    // Close the customer modal and open Add Order modal with details
+    try { const cb=document.getElementById('customerBackdrop'); if(cb) cb.classList.add('hidden'); } catch(e) {}
+    openAddOrderModalWithData(details);
+  }
+
+  // Keep other click handlers intact
+});
+ return;
+    }
+    // Try common selectors inside container
+    // Look for elements with data-label or identifiable text nodes
+    const text = container.innerText || '';
+    // Heuristics: find phone by regex, pincode by 6-digit, city/state by labels
+    const phoneMatch = text.match(/(\+?\d{10,13})/);
+    if (phoneMatch) details.phone = phoneMatch[1];
+    const pinMatch = text.match(/\b(\d{6})\b/);
+    if (pinMatch) details.pincode = pinMatch[1];
+    // try to pick name from header titles
+    const nameEl = container.querySelector('h4, h3, .font-bold, .text-xl');
+    if (nameEl) details.firstName = nameEl.innerText.trim().split('\n')[0];
+    // address lines
+    const addrEl = Array.from(container.querySelectorAll('p, div')).find(n=>/(address|addr|house|road)/i.test(n.innerText||''));
+    if (addrEl) details.address = addrEl.innerText.trim();
+    // product/price/qty detection
+    const prodEl = Array.from(container.querySelectorAll('div, p, span')).find(n=>/(product|karela|men wellness|per price|per piece|quantity)/i.test(n.innerText||''));
+    if (prodEl) {
+      const t = prodEl.innerText.trim();
+      if (/karela/i.test(t)) details.product = 'Karela Jamun Powder';
+      else if (/men wellness/i.test(t)) details.product = 'Men Wellness';
+      const qtyMatch = t.match(/(Qty|Quantity)\s*[:\-]?\s*(\d+)/i);
+      if (qtyMatch) details.quantity = qtyMatch[2];
+      const priceMatch = t.match(/(Per Price|Price|₹|INR)\s*[:\-]?\s*([0-9,.]+)/i);
+      if (priceMatch) details.perPrice = priceMatch[2].replace(/,/g,'');
+    }
+    // If the modal was opened from a specific order, store JSON on the container (some code sets data-order-json)
+    if (container.dataset && container.dataset.orderJson) {
+      try { const fromJson = JSON.parse(container.dataset.orderJson); Object.assign(details, fromJson); } catch(e){}
+    }
+    // open add order modal with extracted details
+    openAddOrderModalWithData(details); // opened add order modal, customer modal hidden above
+  }
+});
+
+// Also if the view-details popup has a Reorder button per-order, we add listener when rendering order cards.
+// If order cards set data-order-json attribute on row, we can use it. The code that generates order rows already appends the customer modal content.
+// We'll also provide a helper function to trigger from other places:
+function reorderFromOrderJson(orderJsonStr) {
+  try {
+    const order = JSON.parse(orderJsonStr);
+    // map fields
+    const details = {
+      firstName: order.firstName || order.name || '',
+      lastName: order.lastName || '',
+      phone: order.phone || order.mobile || order.customerPhone || '',
+      address: order.address || order.addressLine || '',
+      city: order.city || order.town || '',
+      state: order.state || '',
+      pincode: order.pincode || order.pinCode || '',
+      product: order.product || order.productName || '',
+      perPrice: order.perPrice || order.price || '',
+      quantity: order.quantity || order.qty || 1
+    };
+    openAddOrderModalWithData(details); // opened add order modal, customer modal hidden above
+  } catch(e){ console.error('reorderFromOrderJson parse', e); }
+}
+</script>
+
+
+<script>
+(function(){
+  // Helper to safely set value and trigger input events
+  function setValue(id, val) {
+    try {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.value = val === undefined || val === null ? '' : val;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    } catch(e){ console.warn('setValue error', id, e); }
+  }
+  function openAddModalAndFill(details) {
+    try {
+      // Hide customer modal
+      const cust = document.getElementById('customerBackdrop');
+      if (cust && !cust.classList.contains('hidden')) cust.classList.add('hidden');
+      // Show add order modal
+      const add = document.getElementById('modalBackdrop');
+      if (add) {
+        add.classList.remove('hidden');
+        add.style.zIndex = 99999;
+      }
+      document.body.style.overflow = 'hidden';
+      // Fill form fields
+      setValue('firstName', details.firstName || details.name || '');
+      setValue('lastName', details.lastName || details.lastName || '');
+      setValue('phone', details.phone || details.mobile || '');
+      setValue('tellicaller', details.tellicaller || '');
+      setValue('address', details.address || '');
+      setValue('city', details.city || '');
+      setValue('state', details.state || '');
+      setValue('pincode', details.pincode || details.pin || '');
+      setValue('perPrice', details.perPrice || details.price || '');
+      setValue('quantity', details.quantity || details.qty || 1);
+      // product select if available
+      if (details.product) {
+        const prod = document.getElementById('productSelect');
+        if (prod) {
+          // try to set exact match, otherwise set first option
+          const opts = Array.from(prod.options);
+          const match = opts.find(o=> (o.text || '').toLowerCase().includes((details.product+'').toLowerCase()));
+          if (match) prod.value = match.value;
+          else prod.selectedIndex = 0;
+          prod.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      }
+      // compute amount if possible
+      try {
+        const p = parseFloat(document.getElementById('perPrice').value) || 0;
+        const q = parseInt(document.getElementById('quantity').value) || 1;
+        setValue('amount', (p*q).toFixed(2));
+      } catch(e){}
+      // focus on phone for quick edit
+      const ph = document.getElementById('phone'); if (ph) ph.focus();
+    } catch(e){ console.error('openAddModalAndFill', e); }
+  }
+
+  // Robust extractor from #customerDetails DOM
+  function extractDetailsFromCustomerModal() {
+    const container = document.getElementById('customerDetails');
+    const details = {};
+    if (!container) return details;
+
+    // Prefer dataset JSON if present
+    try {
+      if (container.dataset && container.dataset.orderJson) {
+        const parsed = JSON.parse(container.dataset.orderJson);
+        Object.assign(details, parsed);
+      }
+    } catch(e){}
+
+    const text = container.innerText || '';
+
+    // Name heuristics: look for headings containing non-empty text
+    const heading = container.querySelector('h1,h2,h3,h4,.font-bold,.text-xl,.text-2xl');
+    if (heading && heading.innerText.trim()) {
+      let t = heading.innerText.trim();
+      // if heading contains em dash or dash, split and take name part
+      if (t.indexOf('—') !== -1) t = t.split('—').pop().trim();
+      if (t.indexOf('-') !== -1 && t.toLowerCase().includes('customer')) t = t.split('-').pop().trim();
+      details.firstName = t;
+    }
+
+    // Try label-value pairs inside container
+    // We search for nodes that contain "First Name", "Phone", "Address", "City", "State", "Pincode"
+    const nodes = Array.from(container.querySelectorAll('div, p, span, li'));
+    nodes.forEach(n => {
+      const txt = (n.innerText || '').trim();
+      if (!txt) return;
+      const lower = txt.toLowerCase();
+      // First Name
+      const mFN = txt.match(/first\s*name\s*[:\-]?\s*(.+)/i);
+      if (mFN) details.firstName = mFN[1].trim();
+      const mLN = txt.match(/last\s*name\s*[:\-]?\s*(.+)/i);
+      if (mLN) details.lastName = mLN[1].trim();
+      const mPhone = txt.match(/phone\s*[:\-]?\s*(\+?\d{10,13})/i);
+      if (mPhone) details.phone = mPhone[1].trim();
+      // generic phone fallback: any 10+ digit number
+      const anyPhone = txt.match(/(\+?\d{10,13})/);
+      if (anyPhone && !details.phone) details.phone = anyPhone[1];
+      const mPincode = txt.match(/\b(\d{6})\b/);
+      if (mPincode) details.pincode = mPincode[1];
+      const mCity = txt.match(/city\s*[:\-]?\s*([A-Za-z\s]+)/i);
+      if (mCity) details.city = mCity[1].trim();
+      const mState = txt.match(/state\s*[:\-]?\s*([A-Za-z\s]+)/i);
+      if (mState) details.state = mState[1].trim();
+      const mAddress = txt.match(/address\s*[:\-]?\s*(.+)/i);
+      if (mAddress) details.address = mAddress[1].trim();
+      // If node looks long (likely address) and details.address not set, take it
+      if (!details.address && txt.length > 40) details.address = txt;
+      // product/price/qty heuristics
+      if (/product|per piece|per price|quantity|qty|karela|men wellness|price|₹|INR/i.test(txt)) {
+        if (/karela/i.test(txt)) details.product = 'Karela Jamun Powder';
+        else if (/men wellness/i.test(txt)) details.product = 'Men Wellness';
+        const qMatch = txt.match(/(qty|quantity)\s*[:\-]?\s*(\d+)/i);
+        if (qMatch) details.quantity = qMatch[2];
+        const prMatch = txt.match(/(per price|per piece|price|₹|INR)\s*[:\-]?\s*([0-9,.\s]+)/i);
+        if (prMatch) details.perPrice = prMatch[2].replace(/,/g,'').trim();
+      }
+    });
+
+    // As final fallback, try text-level regex for name like "Customer — Name"
+    const nameDash = text.match(/customer\s*[—:-]\s*([A-Za-z\s.'-]{2,})/i);
+    if (nameDash && !details.firstName) details.firstName = nameDash[1].trim();
+
+    return details;
+  }
+
+  // Attach a direct listener to the reorder button after DOM loaded
+  function attachReorderHandler() {
+    const btn = document.getElementById('btnReorder');
+    if (!btn) return;
+    btn.addEventListener('click', function(ev){
+      ev.preventDefault();
+      try {
+        const details = extractDetailsFromCustomerModal();
+        // If still missing address or name, try reading data-order-json from parent .order-card element
+        if ((!details.firstName || !details.address) && ev.target) {
+          // find closest ancestor that has data-order-json attribute
+          let el = ev.target;
+          while (el && el !== document.body) {
+            if (el.dataset && el.dataset.orderJson) {
+              try { Object.assign(details, JSON.parse(el.dataset.orderJson)); break; } catch(e) {}
+            }
+            el = el.parentElement;
+          }
+        }
+        openAddModalAndFill(details);
+      } catch(e){ console.error('Reorder handler error', e); }
+    });
+  }
+
+  // run on DOMContentLoaded or immediately if ready
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', attachReorderHandler);
+  } else attachReorderHandler();
+
+  // Ensure that when modal close buttons hide modalBackdrop we restore body overflow
+  document.addEventListener('click', function(e){
+    if (e.target && (e.target.id === 'modalClose' || e.target.id === 'btnCancel' || e.target.id === 'custClose' || e.target.id === 'custClose2')) {
+      try {
+        const mb = document.getElementById('modalBackdrop');
+        if (mb && mb.classList.contains('hidden')) document.body.style.overflow = '';
+      } catch(e){}
+    }
+  });
+
+})(); 
+</script>
+
 </body>
 </html>

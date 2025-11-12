@@ -3,78 +3,286 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Out Of Delivery Orders — ShreeJee Ayucare</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <title>Order Management — ShreeJee Ayucare (Updated)</title>
+  <script src="https://cdn.tailwindcss.com">
+  // Pincode auto-fill
+  if (fPincode) {
+    fPincode.addEventListener('input', ()=>{
+      const pin = fPincode.value.trim();
+      if (pin.length === 6) {
+        fetch(`https://api.postalpincode.in/pincode/${pin}`)
+        .then(res=>res.json())
+        .then(data=>{
+          if (Array.isArray(data) && data[0].Status === 'Success') {
+            const po = data[0].PostOffice && data[0].PostOffice[0];
+            if (!po) return;
+            fCity.value = po.District || '';
+            fState.value = po.State || '';
+          }
+        }).catch(err=>console.error('Pincode fetch error', err));
+      }
+    });
+  }
+
+</script>
   <style>
-    .order-card { transition: transform 0.2s ease, box-shadow 0.2s ease; }
-    .order-card:hover { transform: translateY(-4px); box-shadow: 0 6px 15px rgba(0,0,0,0.15); }
-    .btn-blue { background:#2563eb; color:white; }
-    .btn-green { background:#16a34a; color:white; }
-    .btn-yellow { background:#ca8a04; color:white; }
-    .btn-red { background:#dc2626; color:white; }
-    /* modal helpers */
-    .glass-card { background: rgba(255,255,255,0.9); border-radius: 12px; }
-  </style>
+    /* Background & glass look */
+    body{
+      background: linear-gradient(-45deg,#065f46,#047857,#10b981,#6ee7b7);
+      background-size:400% 400%;
+      animation: gradientBG 12s ease infinite;
+    }
+    @keyframes gradientBG {
+      0%{background-position:0% 50%}
+      50%{background-position:100% 50%}
+      100%{background-position:0% 50%}
+    }
+    .glass-card { background: rgba(255,255,255,0.18); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.2); transition: all .18s ease; }
+    .glass-card:hover { transform: translateY(-6px) scale(1.01); box-shadow: 0 18px 40px rgba(0,0,0,0.22); }
+    .order-open { box-shadow: 0 0 0 3px rgba(250,180,30,0.06); }
+    .status-square { width:22px; height:22px; border-radius:4px; display:inline-block; cursor:pointer; }
+    .status-square.locked { cursor: not-allowed; opacity:.55; }
+    .clickable { cursor:pointer; }
+
+    /* Product badges & card styles */
+    .product-karela { background: linear-gradient(90deg,#ecfdf5,#ecfeff); border-left:4px solid #10b981; }
+    .product-men { background: linear-gradient(90deg,#eef2ff,#f5f3ff); border-left:4px solid #7c3aed; }
+    .order-cancelled { background:#f3f4f6; border:2px solid #dc2626; } /* Grey fill + Red border as requested */
+
+    .product-pill { display:inline-flex; align-items:center; gap:8px; padding:4px 8px; border-radius:999px; font-size:12px; font-weight:600; }\n    .product-pill svg { width:18px; height:18px; }\n\n    /* Highlighting for RTO and Delivered orders */\n    .highlight-rto { border-left: 6px solid #ef4444 !important; background: rgba(254,202,202,0.10) !important; box-shadow: 0 6px 18px rgba(239,68,68,0.06); }\n    .highlight-delivered { border-left: 6px solid #10b981 !important; background: rgba(220,255,226,0.10) !important; box-shadow: 0 6px 18px rgba(16,185,129,0.06); }
+    .product-pill svg { width:18px; height:18px; }
+
+    /* small responsive tweaks */
+    @media (max-width:640px){
+      .w-40{ width:150px !important; }
+    }
+
+    /* modal inner wrapper for relative positioning */
+    .modal-inner { position: relative; }
+    .modal-close-btn {
+      position: absolute;
+      top: 0.75rem;
+      right: 0.75rem;
+      background: rgba(255,255,255,0.95);
+      border-radius: 9999px;
+      padding: 6px 10px;
+      font-size: 1.15rem;
+      line-height: 1;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.12);
+      border: 1px solid rgba(0,0,0,0.06);
+      z-index: 60;
+      cursor: pointer;
+    }
+
+  
+    /* Status icons (left-inside) */
+    .status-left { display:flex; align-items:center; justify-content:center; width:48px; min-width:48px; height:48px; border-radius:10px; margin-right:12px; box-shadow: 0 8px 20px rgba(2,6,23,0.06); flex-shrink:0; }
+    .status-left svg { width:20px; height:20px; display:block; }
+    /* colored backgrounds with white icon inside for good contrast */
+    .status-icon-rto { background: #ef4444; color: #ffffff; }
+    .status-icon-delivered { background: #10b981; color: #ffffff; }
+    .status-icon-intransit { background: #059669; color: #ffffff; }
+    .status-icon-undispatched { background: #64748b; color: #ffffff; }
+    /* ensure the row keeps items centered vertically */
+    .order-card-relative { position: relative; overflow: visible; align-items: center; }
+    /* stronger left border when highlighted */
+    .highlight-rto { border-left-width: 6px !important; border-left-color: #ef4444 !important; }
+    .highlight-delivered { border-left-width: 6px !important; border-left-color: #10b981 !important; }
+
+</style>
+
+<style>
+/* Status icon basics */
+.status-icon { width:28px; height:28px; display:flex; align-items:center; justify-content:center; border-radius:50%; }
+.status-icon.clickable { cursor:pointer; }
+/* undispatched: grey outline */
+.status-icon-undispatched { background: #f0f0f0; border: 1px solid #cfcfcf; }
+/* in-transit / dispatched: simple green */
+.status-icon-intransit { background: #2ecc71; }
+/* delivered: green tick */
+.status-icon-delivered { background: #2ecc71; }
+/* RTO: red cross */
+.status-icon-rto { background: #e74c3c; }
+/* Glowing rows */
+.glow-rto { box-shadow: 0 0 0 3px rgba(231,76,60,0.15), 0 6px 18px rgba(231,76,60,0.08) inset; border-radius:8px; }
+.glow-delivered { box-shadow: 0 0 0 3px rgba(46,204,113,0.15), 0 6px 18px rgba(46,204,113,0.08) inset; border-radius:8px; }
+/* make the status icon stand out slightly */
+.row .status-icon { margin-left:6px; }
+</style>
 </head>
-<body class="bg-gray-50 min-h-screen text-gray-800">
+<body class="font-sans text-gray-800 min-h-screen">
 
   <!-- NAV -->
-  <nav class="bg-green-900 text-white sticky top-0 z-50 shadow">
-    <div class="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
-      <h1 class="text-xl font-semibold">Out Of Delivery Orders</h1>
-      <div class="flex gap-3 items-center">
-        <select id="filterOOD" class="px-2 py-2 rounded-md border bg-white text-black">
-          <option value="all" selected>All OOD Orders</option>
-          <option value="mine">My OOD Orders</option>
+  <nav class="bg-green-900/95 text-white fixed top-0 left-0 right-0 z-50 shadow-md">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div class="flex items-center gap-3">
+        <img src="logo.jpg" alt="Logo" class="h-10 w-10 rounded-full object-cover shadow-md" onerror="this.style.display='none'">
+        <div>
+          <div class="font-semibold text-lg">ShreeJee Ayucare</div>
+          <div id="welcomeMsg" class="text-sm text-yellow-300 font-bold"></div>
+          <div class="text-xs text-green-200">Admin Portal</div>
+        </div>
+      </div>
+
+      <div id="navControls" class="flex flex-wrap items-center gap-3">
+        <input id="searchInput" type="search" placeholder="Search name or phone..." class="px-3 py-2 rounded-md border bg-white text-black w-64 shadow-sm" />
+
+        <!-- Owner filter (Admin) -->
+        <select id="filterOwner" class="px-2 py-2 rounded-md border bg-white text-black shadow-sm">
+          <option value="all">All Orders</option>
+          <option value="mine">My Orders</option>
         </select>
-        <button id="pendingBtn" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-md shadow">
-          Pending <span id="pendingCount" class="ml-2 bg-red-500 text-white rounded-full px-2 py-0.5 text-xs">0</span>
-        </button>
-        <button onclick="window.location.href='Order-Management.html'"
-          class="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-md shadow">
-          Back to Dashboard
-        </button>
+
+
+        <select id="filterStatus" class="px-2 py-2 rounded-md border bg-white text-black shadow-sm">
+          <option value="all">All Status</option>
+          <option value="delivered">Delivered</option>
+          <option value="rto">RTO</option>
+          <option value="cancelled">Cancelled</option>
+        </select>
+
+        <input id="filterFrom" type="date" class="px-2 py-2 rounded-md border bg-white text-black shadow-sm" />
+        <input id="filterTo" type="date" class="px-2 py-2 rounded-md border bg-white text-black shadow-sm" />
+
+        <button id="btnAddOrder" class="bg-yellow-400 hover:bg-yellow-500 px-4 py-2 rounded-md font-semibold shadow">+ Add Order</button>
+        <button id="btnSchedule" onclick="window.location.href='schedule.html'"
+       class="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-md shadow">Schedule</button>
+        <button onclick="window.location.href='out_of_delivery.html'"
+       class="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-md shadow flex items-center gap-2">
+       Out of Delivery 
+       <span id="oodBadge" class="ml-1 bg-red-500 text-white rounded-full px-2 py-0.5 text-xs">0</span>
+      </button>
+        <button id="btnLogout" onclick="logout()" class="bg-red-500 hover:bg-red-600 px-4 py-2 rounded-md font-semibold shadow text-white">Logout</button>
       </div>
     </div>
   </nav>
+<div id="headerSpacer" style="height:72px"></div>
 
-  <!-- CONTENT -->
+  <!-- MAIN -->
   <main class="max-w-6xl mx-auto p-6">
-    <div id="oodContainer" class="space-y-4"></div>
-    <p id="noOrdersMsg" class="text-center text-gray-500 mt-10 hidden">No Out Of Delivery Currently</p>
-
-    <!-- Pending Section -->
-    <div id="pendingSection" class="hidden mt-10">
-      <h2 class="text-xl font-bold text-purple-700 mb-4">📌 Pending OOD Follow-ups</h2>
-      <div id="pendingContainer" class="space-y-4"></div>
-    </div>
+    <div id="ordersContainer" class="space-y-6"></div>
+    <p id="emptyMessage" class="text-center text-gray-200 mt-8 hidden">No orders found.</p>
   </main>
 
-  <!-- Customer Detail Modal (matches Order-Management layout) -->
+  <!-- Add Order Modal -->
+  <div id="modalBackdrop" class="fixed inset-0 bg-black bg-opacity-40 hidden items-center justify-center z-50">
+    <div class="bg-white rounded-lg w-full max-w-2xl mx-4 shadow-lg p-6 modal-inner">
+      <div class="flex justify-between items-center mb-4">
+        <h3 id="modalTitle" class="text-lg font-semibold">Add Order</h3>
+        <button id="modalClose" class="modal-close-btn text-gray-600 hover:text-gray-900" aria-label="Close add order modal">✕</button>
+      </div>
+
+      <form id="orderForm" class="space-y-3">
+        <div class="grid grid-cols-2 gap-3">
+          <input id="firstName" class="border p-2 rounded" placeholder="First name" required />
+          <input id="lastName" class="border p-2 rounded" placeholder="Last name" />
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <input id="phone" class="border p-2 rounded" placeholder="Phone (10 digits)" required />
+          <input id="tellicaller" class="border p-2 rounded" placeholder="Order placed by (Tellicaller)" required />
+        </div>
+
+        <input id="address" class="border p-2 rounded" placeholder="Address" />
+        <div class="grid grid-cols-3 gap-3">
+          <input id="city" class="border p-2 rounded" placeholder="City" />
+          <input id="state" class="border p-2 rounded" placeholder="State" />
+          <input id="pincode" class="border p-2 rounded" placeholder="Pincode" maxlength="6" />
+        </div>
+
+        <div class="grid grid-cols-3 gap-3">
+          <input id="perPrice" type="number" min="0" step="0.01" class="border p-2 rounded" placeholder="Per Price (Single Piece)" required />
+          <input id="quantity" type="number" min="1" step="1" class="border p-2 rounded" placeholder="Quantity" value="1" required />
+          <input id="amount" type="number" min="0" step="0.01" class="border p-2 rounded" placeholder="Total Amount" required readonly />
+        </div>
+
+        <div class="grid grid-cols-3 gap-3 items-center">
+          <select id="statusSelect" class="border p-2 rounded">
+            <option value="open">Open</option>
+            <option value="dispatched">Dispatched</option>
+          </select>
+          <input id="scheduledDate" type="date" class="border p-2 rounded" title="Choose a date to schedule this order (defaults to today)" />
+          <!-- Product selector with small inline icons -->
+          <select id="productSelect" class="border p-2 rounded">
+            <option value="Karela Jamun Powder">🟢 Karela Jamun Powder</option>
+            <option value="Men Wellness">🟣 Men Wellness</option>
+          </select><img id="productSelectIcon" src="product1.png" alt="product icon" class="inline-block w-12 h-12 ml-2 align-middle"/> 
+        </div>
+
+        <div class="flex justify-end gap-3 pt-2">
+          <button type="button" id="btnCancel" class="px-4 py-2 rounded border">Cancel</button>
+          <button type="submit" id="btnSaveOrder" class="px-4 py-2 rounded bg-green-700 text-white">Save Order</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Customer Detail Modal -->
   <div id="customerBackdrop" class="fixed inset-0 bg-black bg-opacity-40 hidden items-center justify-center z-50">
     <div class="bg-white rounded-2xl w-full max-w-4xl mx-4 shadow-2xl p-6 glass-card modal-inner">
       <div class="flex justify-between items-center mb-4">
         <h3 id="custTitle" class="text-2xl font-bold text-green-800">Customer Details</h3>
-        <button id="custClose" class="modal-close-btn text-gray-600 hover:text-gray-900" aria-label="Close">✕</button>
+        <button id="custClose" class="modal-close-btn text-gray-600 hover:text-gray-900 text-xl" aria-label="Close customer details">✕</button>
       </div>
 
       <div id="customerDetails" class="space-y-6"></div>
 
       <div class="flex justify-end mt-4">
+        <button id="btnReorder" class="px-5 py-2 rounded-lg bg-green-600 text-white shadow hover:bg-green-700 transition mr-3">Reorder</button>
         <button id="custClose2" class="px-5 py-2 rounded-lg bg-red-500 text-white shadow hover:bg-red-600 transition">Close</button>
       </div>
     </div>
   </div>
 
   <!-- Toast -->
-  <div id="toast" style="position:fixed;bottom:1rem;right:1rem; background:rgba(0,0,0,0.85); color:#fff; padding:8px 12px; border-radius:8px; display:none; z-index:9999;"></div>
+  <div id="toast" class="fixed bottom-6 right-6 bg-gray-900 text-white px-4 py-2 rounded shadow hidden"></div>
 
-  <!-- Firebase -->
-  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
+  <!-- Firebase libs -->
+  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js">
+  // Pincode auto-fill
+  if (fPincode) {
+    fPincode.addEventListener('input', ()=>{
+      const pin = fPincode.value.trim();
+      if (pin.length === 6) {
+        fetch(`https://api.postalpincode.in/pincode/${pin}`)
+        .then(res=>res.json())
+        .then(data=>{
+          if (Array.isArray(data) && data[0].Status === 'Success') {
+            const po = data[0].PostOffice && data[0].PostOffice[0];
+            if (!po) return;
+            fCity.value = po.District || '';
+            fState.value = po.State || '';
+          }
+        }).catch(err=>console.error('Pincode fetch error', err));
+      }
+    });
+  }
+
+</script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js">
+  // Pincode auto-fill
+  if (fPincode) {
+    fPincode.addEventListener('input', ()=>{
+      const pin = fPincode.value.trim();
+      if (pin.length === 6) {
+        fetch(`https://api.postalpincode.in/pincode/${pin}`)
+        .then(res=>res.json())
+        .then(data=>{
+          if (Array.isArray(data) && data[0].Status === 'Success') {
+            const po = data[0].PostOffice && data[0].PostOffice[0];
+            if (!po) return;
+            fCity.value = po.District || '';
+            fState.value = po.State || '';
+          }
+        }).catch(err=>console.error('Pincode fetch error', err));
+      }
+    });
+  }
+
+</script>
 
   <script>
-  /******** Firebase config ********/
+  /******** Firebase config (replace if needed) ********/
   const firebaseConfig = {
     apiKey: "AIzaSyB1wbJonjyJQDrPJWbMCVBtRolJH4HDskU",
     authDomain: "shreejee-ayucare.firebaseapp.com",
@@ -84,43 +292,443 @@
     messagingSenderId: "247248655859",
     appId: "1:247248655859:web:b09bfc30ff6953aad42e86"
   };
-  if (!firebase.apps || !firebase.apps.length) firebase.initializeApp(firebaseConfig);
+  if (!firebase.apps || !firebase.apps.length) {
+    firebase.initializeApp(firebaseConfig);
+  } else if (firebase.apps.length === 0) {
+    firebase.initializeApp(firebaseConfig);
+  }
   const db = firebase.database();
 
+
+  // global logout function
+  window.logout = function() {
+    try { localStorage.removeItem('currentTellicaller'); } catch(e) {}
+    window.location.href = 'index.html';
+  };
+
+  /******** App state & elements ********/
   const currentUser = JSON.parse(localStorage.getItem("currentTellicaller") || "{}");
-  if (!currentUser.name) { /* not logged in — redirect */ window.location.href = "index.html"; }
+  // show welcome message in nav
+  try{ const welcomeMsgEl = document.getElementById("welcomeMsg"); if (welcomeMsgEl) welcomeMsgEl.textContent = "Welcome " + (currentUser.name || ""); }catch(e){}
+  if (!currentUser.name) { window.location.href = "index.html"; }
 
   const ordersRef = db.ref('oms_orders');
-  let firebaseOrders = {};
+  const customersRef = db.ref('oms_customers');
+  const scheduleRef = db.ref('oms_schedule');
 
-  /******** Helpers ********/
-  function showToast(msg, t=2500){
-    const td = document.getElementById('toast');
-    if (!td) return;
-    td.textContent = msg;
-    td.style.display = 'block';
-    setTimeout(()=> td.style.display = 'none', t);
+  let ordersSnapshot = {};
+  let customersSnapshot = {};
+  let scheduleSnapshot = {};
+
+  const ordersContainer = document.getElementById('ordersContainer');
+  const emptyMessage = document.getElementById('emptyMessage');
+  const searchInput = document.getElementById('searchInput');
+  const btnAddOrder = document.getElementById('btnAddOrder');
+  const modalBackdrop = document.getElementById('modalBackdrop');
+  const modalClose = document.getElementById('modalClose');
+  const orderForm = document.getElementById('orderForm');
+  const btnCancel = document.getElementById('btnCancel');
+  const toast = document.getElementById('toast');
+
+  const customerBackdrop = document.getElementById('customerBackdrop');
+  const custTitle = document.getElementById('custTitle');
+  const customerDetails = document.getElementById('customerDetails');
+  const custClose = document.getElementById('custClose');
+  const custClose2 = document.getElementById('custClose2');
+
+  const filterStatus = document.getElementById('filterStatus');
+  const filterFrom = document.getElementById('filterFrom');
+  const filterTo = document.getElementById('filterTo');
+
+  const filterOwner = document.getElementById('filterOwner');
+
+
+  // form fields
+  const fFirst = document.getElementById('firstName');
+  const fLast = document.getElementById('lastName');
+  const fPhone = document.getElementById('phone');
+  const fTellicaller = document.getElementById('tellicaller');
+  const fAddress = document.getElementById('address');
+  const fCity = document.getElementById('city');
+  const fState = document.getElementById('state');
+  const fPincode = document.getElementById('pincode');
+  const fAmount = document.getElementById('amount');
+  const fStatus = document.getElementById('statusSelect');
+  const fScheduledDate = document.getElementById('scheduledDate');
+  const fProduct = document.getElementById('productSelect');
+
+  const fPerPrice = document.getElementById('perPrice');
+  const fQuantity = document.getElementById('quantity');
+
+  function updateAmountFromInputs() {
+    const per = parseFloat(fPerPrice.value) || 0;
+    const qty = parseInt(fQuantity.value) || 1;
+    const total = per * qty;
+    fAmount.value = total.toFixed(2);
+  }
+  if (fPerPrice) fPerPrice.addEventListener('input', updateAmountFromInputs);
+  if (fQuantity) fQuantity.addEventListener('input', updateAmountFromInputs);
+  try { updateAmountFromInputs(); } catch(e) {}
+
+  function showToast(msg, t=3000){
+    toast.textContent = msg;
+    toast.classList.remove('hidden');
+    setTimeout(()=> toast.classList.add('hidden'), t);
+  }
+  function humanDate(ts){ return new Date(ts).toLocaleString(); }
+  function generateOrderId(){ return 'ord_' + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+
+  function updateOodBadge(){
+    const badge = document.getElementById('oodBadge');
+    if (!badge) return;
+    const count = Object.values(ordersSnapshot||{}).filter(o =>
+      o && o.oodStatus === 'today' && (!o.oodRemark || !['Agree','Not Picked','Refused'].includes(o.oodRemark))
+    ).length;
+    badge.textContent = count;
   }
 
-  function safeToNumber(v){
-    if (v === undefined || v === null) return null;
-    return (typeof v === 'number') ? v : (isNaN(Number(v)) ? null : Number(v));
+  /******** Render Orders (grouped) with product awareness ********/
+  function renderOrders(filterText=''){
+    let list = Object.values(ordersSnapshot || {});
+    const q = filterText.trim().toLowerCase();
+    if (q) {
+      list = list.filter(o=>{
+        const nm = ((o.firstName||'') + ' ' + (o.lastName||'')).toLowerCase();
+        return nm.includes(q) || (o.phone||'').includes(q);
+      });
+    }
+
+    if (filterOwner && filterOwner.value === 'mine') {
+      list = list.filter(o => o.tellicaller === currentUser.name);
+    } else if (!filterOwner) {
+      // non-admin tellecaller view: show only current user's orders
+      list = list.filter(o => o.tellicaller === currentUser.name);
+    }
+    
+
+    // status filter
+    if (filterStatus.value === 'delivered') {
+      list = list.filter(o => o.status === 'closed' && o.closedType === 'Delivered');
+    } else if (filterStatus.value === 'rto') {
+      list = list.filter(o => o.status === 'closed' && o.closedType === 'RTO');
+    } else if (filterStatus.value === 'cancelled') {
+      list = list.filter(o => o.status === 'cancelled' || (o.status==='closed' && o.closedType==='Cancelled'));
+    }
+
+    // date range
+    const fromVal = filterFrom.value ? new Date(filterFrom.value).setHours(0,0,0,0) : null;
+    const toVal = filterTo.value ? new Date(filterTo.value).setHours(23,59,59,999) : null;
+    if (fromVal || toVal) {
+      list = list.filter(o => (!fromVal || o.timestamp >= fromVal) && (!toVal || o.timestamp <= toVal));
+    }
+
+    if (!list.length) {
+      ordersContainer.innerHTML = '';
+      emptyMessage.classList.remove('hidden');
+      return;
+    }
+    emptyMessage.classList.add('hidden');
+
+    // group orders by calendar date
+    const groups = {};
+    list.forEach(o => {
+      const d = new Date(o.timestamp || Date.now());
+      const key = d.toLocaleDateString();
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(o);
+    });
+
+    ordersContainer.innerHTML = '';
+
+    function createSection(title, arr) {
+      if (!arr.length) return;
+      const sec = document.createElement('div');
+      sec.className = 'glass-card rounded-xl p-4';
+      const head = document.createElement('h3');
+      head.className = 'font-semibold text-lg mb-3 text-gray-800';
+      head.textContent = title;
+      sec.appendChild(head);
+
+      arr.sort((a,b)=>b.timestamp - a.timestamp).forEach(order => {
+        // normalize product for display (backcompat)
+        const product = order.product || 'Karela Jamun Powder';
+        const row = document.createElement('div');
+        // base classes + product-specific
+        row.className = 'flex items-center justify-between p-3 rounded-md border mb-2 shadow-sm hover:shadow-lg transition';
+        // ensure card is positioned for absolute status icon
+        row.classList.add('order-card-relative');
+        // create left-side status icon container (inside the card, before content)
+        const statusWrap = document.createElement('div');
+        statusWrap.className = 'status-left';
+        // Decide icon & style:
+        // Simplified visual-only icons:
+        // - Click toggles between undispatched (grey) and dispatched (simple green circle) visually only.
+        // - No database writes or status changes — this purely changes classes and SVG shown.
+        // - RTO and Delivered keep their special icons and get glowing boundary styles.
+        const setUndispatchedIcon = () => {
+          statusWrap.className = 'status-icon status-icon-undispatched clickable';
+          statusWrap.setAttribute('title', 'Undispatched (click to toggle)');
+          statusWrap.innerHTML = `
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="12" cy="12" r="7" fill="white" />
+            </svg>`;
+        };
+        const setDispatchedIcon = () => {
+          statusWrap.className = 'status-icon status-icon-intransit clickable';
+          statusWrap.setAttribute('title', 'Dispatched (click to toggle)');
+          statusWrap.innerHTML = `
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="12" cy="12" r="5" fill="white" />
+            </svg>`;
+        };
+        const setRtoIcon = () => {
+          statusWrap.className = 'status-icon status-icon-rto';
+          statusWrap.setAttribute('title', 'RTO');
+          statusWrap.innerHTML = `
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+              <path d="M7.5 7.5L16.5 16.5M7.5 16.5L16.5 7.5" stroke="white" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>`;
+        };
+        const setDeliveredIcon = () => {
+          statusWrap.className = 'status-icon status-icon-delivered';
+          statusWrap.setAttribute('title', 'Delivered');
+          statusWrap.innerHTML = `
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+              <path d="M20 6L9 17L4 12" stroke="white" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>`;
+        };
+
+        // Initial render logic (respecting order.status / externalOrderId)
+        if (order.status === 'closed' && order.closedType === 'RTO') {
+          setRtoIcon();
+          row.classList.add('glow-rto');
+        } else if (order.status === 'closed' && order.closedType === 'Delivered') {
+          setDeliveredIcon();
+          row.classList.add('glow-delivered');
+        } else if (!order.externalOrderId || order.externalOrderId === '') {
+          setUndispatchedIcon();
+        } else {
+          // has external ID but not closed -> show simple green (dispatched-like)
+          setDispatchedIcon();
+        }
+
+        // Add click behavior: purely visual toggle between undispatched <-> dispatched.
+        statusWrap.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          // don't toggle visual for closed or cancelled orders (they have glow and are final)
+          if (order.status === 'closed' || order.status === 'cancelled') return;
+          if (statusWrap.classList.contains('status-icon-undispatched')) {
+            setDispatchedIcon();
+          } else if (statusWrap.classList.contains('status-icon-intransit')) {
+            setUndispatchedIcon();
+          } else {
+            // fallback: toggle to dispatched
+            setDispatchedIcon();
+          }
+        });// attach statusWrap as the left-most child so it's inside the card at left
+        if (row.firstChild) row.insertBefore(statusWrap, row.firstChild);
+        else if (row.firstChild) row.insertBefore(statusWrap, row.firstChild); else row.appendChild(statusWrap);
+    
+        if (order.status === 'cancelled' || order.closedType === 'Cancelled') {
+          row.classList.add('order-cancelled');
+        } else if (product === 'Men Wellness') {
+          row.classList.add('product-men');
+        } else {
+          row.classList.add('product-karela');
+        }
+
+        // LEFT: product pill + name+phone+time
+        const left = document.createElement('div');
+        left.className = 'flex items-center gap-3';
+
+        // product pill with inline svg icons (Ayurvedic bottle & shield)
+        const pill = document.createElement('div');
+        pill.className = 'product-pill';
+        pill.innerHTML = (product === 'Men Wellness' ? 
+          `<img src='product2.png' alt='Men' class='w-8 h- rounded-sm inline-block mr-2 align-middle'/> <span>Men Wellness</span>`
+          :
+          `<img src='product1.png' alt='Karela' class='w-8 h-8 rounded-sm inline-block mr-2 align-middle'/> <span>Karela Jamun Powder</span>`
+        );
+        left.appendChild(pill);
+
+        const meta = document.createElement('div');
+        meta.style.minWidth = '220px';
+        const nameDiv = document.createElement('div');
+        nameDiv.className = 'font-medium text-blue-700 hover:underline cursor-pointer';
+        nameDiv.textContent = (order.firstName||'') + ' ' + (order.lastName||'');
+        nameDiv.addEventListener('click', (ev)=>{ ev.stopPropagation(); openCustomerModal(order.phone, order.orderId); });
+
+        const phoneDiv = document.createElement('div');
+        phoneDiv.className = 'text-xs text-gray-500';
+        phoneDiv.textContent = order.phone + ' • ' + humanDate(order.timestamp || Date.now());
+
+        meta.appendChild(nameDiv);
+        meta.appendChild(phoneDiv);
+        left.appendChild(meta);
+
+        // MIDDLE: aligned vertical block
+        const middle = document.createElement('div');
+        middle.className = 'flex flex-col text-sm w-40';
+        const amt = document.createElement('span'); amt.className = 'font-semibold'; amt.textContent = '₹ ' + (order.amount != null ? Number(order.amount).toFixed(2) : '0.00');
+        const tel = document.createElement('span'); tel.className = 'text-xs text-gray-600'; tel.textContent = 'By: ' + (order.tellicaller || '-');
+        middle.appendChild(amt);
+        middle.appendChild(tel);
+        // product name visible
+        const prodLine = document.createElement('span'); prodLine.className = 'text-xs text-gray-700'; prodLine.innerHTML = "Product: " + product;
+        middle.appendChild(prodLine);
+        if (order.status === 'closed' || order.status === 'cancelled') {
+          const st = document.createElement('span'); st.className = 'text-xs text-gray-700'; 
+          st.textContent = 'Status: ' + (order.status === 'cancelled' ? 'Cancelled' : (order.closedType || '-'));
+          middle.appendChild(st);
+        }
+
+        // RIGHT: orderId + view
+        const right = document.createElement('div');
+        right.className = 'flex gap-2 items-center';
+        const orderIdEl = document.createElement('div');
+        orderIdEl.className = 'text-xs text-gray-600';
+        orderIdEl.textContent = (order.externalOrderId && order.externalOrderId !== '') ? order.externalOrderId : 'Not Defined';
+        right.appendChild(orderIdEl);
+
+        const viewBtn = document.createElement('button');
+        viewBtn.className = 'px-2 py-1 rounded bg-blue-600 text-white text-xs';
+        viewBtn.textContent = 'View';
+        viewBtn.addEventListener('click', (ev) => { ev.stopPropagation(); openCustomerModal(order.phone, order.orderId); });
+        right.appendChild(viewBtn);
+
+        row.appendChild(left);
+        row.appendChild(middle);
+        row.appendChild(right);
+        sec.appendChild(row);
+      });
+
+      ordersContainer.appendChild(sec);
+    }
+
+    Object.keys(groups).sort((a,b)=> new Date(b) - new Date(a)).forEach(dateStr => {
+      createSection(dateStr, groups[dateStr]);
+    });
   }
 
-  function isToday(ts){
-    if (!ts) return false;
-    const d = new Date(safeToNumber(ts) || ts);
-    return d.toDateString() === new Date().toDateString();
+  /******** Firebase listeners & backward compatibility ********/
+  ordersRef.on('value', snap => {
+    ordersSnapshot = snap.val() || {};
+    // normalize older orders that may be missing quantity/perPrice/product/cancelled (backwards-compat)
+    Object.keys(ordersSnapshot).forEach(k => {
+      const o = ordersSnapshot[k] || {};
+      if (!('quantity' in o)) o.quantity = 1;
+      if (!('perPrice' in o)) {
+        const q = o.quantity || 1;
+        o.perPrice = (o.amount && q ? parseFloat((o.amount / q).toFixed(2)) : 0);
+      }
+      // ensure amount is consistent with perPrice * quantity
+      o.amount = parseFloat(((o.perPrice || 0) * (o.quantity || 1)).toFixed(2));
+      // default product for older orders
+      if (!('product' in o) || !o.product) o.product = 'Karela Jamun Powder';
+      // ensure cancelled flag exists
+      if (!('cancelled' in o)) o.cancelled = false;
+      // handle legacy closedType 'Cancelled'
+      if (o.closedType === 'Cancelled') {
+        o.status = 'cancelled';
+        o.cancelled = true;
+      }
+      ordersSnapshot[k] = o;
+    });
+
+    renderOrders(searchInput.value);
+    updateOodBadge();
+  });
+
+  customersRef.on('value', snap => {
+    customersSnapshot = snap.val() || {};
+  });
+  scheduleRef.on('value', snap => {
+    scheduleSnapshot = snap.val() || {};
+  });
+
+  /******** Scheduler (unchanged) ********/
+  function todayKeyString(d = new Date()) { return d.toISOString().split('T')[0]; }
+  async function processDueSchedulesFor(dateKey) {
+    try {
+      const snap = await scheduleRef.child(dateKey).once('value');
+      let data = snap.val() || {};
+      data = Object.fromEntries(Object.entries(data).filter(([_, o]) => (o.createdBy === currentUser.name)));
+      const keys = Object.keys(data);
+      if (!keys.length) return;
+      for (const orderId of keys) {
+        const scheduled = data[orderId];
+        if (ordersSnapshot && ordersSnapshot[scheduled.orderId]) {
+          await scheduleRef.child(dateKey).child(orderId).remove();
+          continue;
+        }
+        const orderPayload = Object.assign({}, scheduled);
+        if (!('quantity' in orderPayload)) orderPayload.quantity = 1;
+        if (!('perPrice' in orderPayload)) orderPayload.perPrice = orderPayload.amount ? parseFloat((orderPayload.amount / orderPayload.quantity).toFixed(2)) : 0;
+        // ensure product defaults
+        if (!('product' in orderPayload) || !orderPayload.product) orderPayload.product = 'Karela Jamun Powder';
+        orderPayload.timestamp = Date.now();
+        orderPayload.status = scheduled.status || 'open';
+        orderPayload.externalOrderId = scheduled.externalOrderId || '';
+        await ordersRef.child(scheduled.orderId).set(orderPayload);
+
+        // update/create customer node
+        const phoneKey = scheduled.phone;
+        const existing = customersSnapshot[phoneKey] || null;
+        if (existing) {
+          const ordersMap = existing.orders || {};
+          ordersMap[scheduled.orderId] = true;
+          const scheduledMap = existing.scheduledOrders || {};
+          if (scheduledMap[scheduled.orderId]) delete scheduledMap[scheduled.orderId];
+          const updateObj = { orders: ordersMap, scheduledOrders: scheduledMap, tellicallerLast: scheduled.tellicaller };
+          await customersRef.child(phoneKey).update(updateObj);
+        } else {
+          const newCust = {
+            firstName: scheduled.firstName || '',
+            lastName: scheduled.lastName || '',
+            phone: scheduled.phone || '',
+            address: scheduled.address || '',
+            city: scheduled.city || '',
+            state: scheduled.state || '',
+            pincode: scheduled.pincode || '',
+            tellicallerLast: scheduled.tellicaller || '',
+            createdAt: Date.now(),
+            orders: {}
+          };
+          newCust.orders[scheduled.orderId] = true;
+          await customersRef.child(phoneKey).set(newCust);
+        }
+        await scheduleRef.child(dateKey).child(orderId).remove();
+      }
+      showToast(`${keys.length} scheduled order(s) moved to live orders for ${dateKey}`, 4000);
+    } catch (err) {
+      console.error('Error processing scheduled orders for', dateKey, err);
+    }
+  }
+  const todayKey = todayKeyString();
+  processDueSchedulesFor(todayKey).catch(()=>{});
+  scheduleRef.child(todayKey).on('value', snap=>{
+    if (snap.exists()) processDueSchedulesFor(todayKey).catch(()=>{});
+  });
+
+  /******** Actions: dispatched/save external id/close/cancel ********/
+  async function toggleDispatched(orderId) {
+    const order = ordersSnapshot[orderId];
+    if (!order) return;
+    if (order.status === 'closed' || order.status === 'cancelled') return;
+    const newStatus = (order.status === 'dispatched') ? 'open' : 'dispatched';
+    const upd = { status: newStatus };
+    if (newStatus === 'dispatched') upd.dispatchedAt = Date.now();
+    else upd.dispatchedAt = null;
+    await ordersRef.child(orderId).update(upd);
+    showToast('Order status updated');
   }
 
-  function getBtnClass(val){
-    if (val==="Agree") return "btn-green";
-    if (val==="Not Picked") return "btn-yellow";
-    if (val==="Refused") return "btn-red";
-    return "btn-blue";
+  async function saveExternalOrderId(orderId, newId) {
+    if (!newId || !newId.trim()) return;
+    await ordersRef.child(orderId).update({ externalOrderId: newId.trim(), status: 'dispatched', dispatchedAt: Date.now() });
+    showToast('External Order ID saved and order marked dispatched');
   }
 
-  /******** Actions ********/
   async function closeOrderWithType(orderId, type, remark='') {
     if (!orderId) return;
     if (type === 'RTO' && (!remark || !remark.trim())) { alert('Remark is required for RTO'); return; }
@@ -128,318 +736,291 @@
     if (type === 'RTO') updates.remark = remark.trim();
     await ordersRef.child(orderId).update(updates);
     showToast('Order closed as ' + type);
-    renderOOD();
-    renderPending();
   }
 
-  async function saveOODRemark(orderId, remark) {
+  async function cancelOrder(orderId, reason='') {
     if (!orderId) return;
-    await ordersRef.child(orderId).update({ oodRemark: remark, oodLastUpdated: Date.now() });
-    showToast('OOD remark saved');
+    const updates = { status: 'cancelled', cancelled: true, cancelledAt: Date.now(), cancelledReason: reason || '' };
+    await ordersRef.child(orderId).update(updates);
+    showToast('Order marked Cancelled');
   }
 
-  /******** Render OOD list ********/
-  function renderOOD() {
-    const filterVal = document.getElementById("filterOOD") ? document.getElementById("filterOOD").value : "all";
-    const container = document.getElementById("oodContainer");
-    const noMsg = document.getElementById("noOrdersMsg");
-    container.innerHTML = "";
+  /******** Add Order modal handling (now includes product) ********/
+  btnAddOrder.addEventListener('click', ()=>{
+    // sync small product icon beside select
+    try {
+      const psi = document.getElementById('productSelectIcon');
+      const psel = document.getElementById('productSelect');
+      function updateProductIcon(){ if(!psi || !psel) return; psi.src = (psel.value && psel.value.toLowerCase().includes('men')) ? 'product2.png' : 'product1.png'; }
+      updateProductIcon();
+      if (psel) psel.addEventListener('change', updateProductIcon);
+    } catch(e){}
 
-    // Accept orders where oodStatus === 'today' and either no oodMarkedAt (legacy) OR oodMarkedAt is today.
-    let todayOOD = Object.values(firebaseOrders || {}).filter(o =>
-      o && o.oodStatus === "today" && (!o.oodMarkedAt || isToday(o.oodMarkedAt))
-    );
+    orderForm.reset();
+    fTellicaller.value = currentUser.name || '';
+    fStatus.value = 'open';
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      fScheduledDate.value = today;
+    } catch(e) { fScheduledDate.value = ''; }
+    // default product selection
+    try { document.getElementById('productSelect').value = 'Karela Jamun Powder'; } catch(e){}
+    modalBackdrop.style.display = 'flex';
+    modalBackdrop.classList.remove('hidden');
+  });
+  modalClose.addEventListener('click', ()=>{ modalBackdrop.style.display = 'none'; modalBackdrop.classList.add('hidden'); });
+  btnCancel.addEventListener('click', ()=>{ modalBackdrop.style.display = 'none'; modalBackdrop.classList.add('hidden'); });
 
-    if (filterVal === "mine") todayOOD = todayOOD.filter(o => o.tellicaller === currentUser.name);
+  orderForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const firstName = fFirst.value.trim();
+    const lastName = fLast.value.trim();
+    const phone = fPhone.value.trim();
+    const tellicaller = fTellicaller.value.trim() || currentUser.name;
+    const address = fAddress.value.trim();
+    const city = fCity.value.trim();
+    const state = fState.value.trim();
+    const pincode = fPincode.value.trim();
+    const perPrice = parseFloat(fPerPrice.value) || 0;
+    const quantity = parseInt(fQuantity.value) || 1;
+    const amount = parseFloat((perPrice * quantity).toFixed(2)) || parseFloat(fAmount.value) || 0;
+    const status = fStatus.value;
+    const scheduledDateVal = fScheduledDate.value ? fScheduledDate.value : new Date().toISOString().split('T')[0];
+    const product = (fProduct && fProduct.value) ? fProduct.value : 'Karela Jamun Powder';
 
-    if (!todayOOD.length) {
-      if (noMsg) noMsg.classList.remove("hidden");
-    } else {
-      if (noMsg) noMsg.classList.add("hidden");
-    }
+    if (!firstName || !phone || isNaN(amount)) { alert('Please fill required fields: First name, Phone, Amount'); return; }
 
-    // update pending count
-    const pendingCount = document.getElementById("pendingCount");
-    if (pendingCount) {
-      const pendings = Object.values(firebaseOrders || {}).filter(o =>
-        o && o.oodStatus === "today" && o.oodMarkedAt && !isToday(o.oodMarkedAt) && o.status !== 'closed'
-      );
-      pendingCount.textContent = pendings.length;
-    }
-
-    todayOOD.forEach(o => {
-      const card = document.createElement("div");
-      card.className = "order-card bg-white p-4 rounded shadow border";
-
-      // Build content
-      const left = document.createElement('div');
-      left.innerHTML = `
-        <h2 class="font-semibold text-lg text-blue-700">${o.firstName||''} ${o.lastName||''}</h2>
-        <p class="text-sm text-gray-600">Phone: ${o.phone || '-'}</p>
-        <p class="text-sm text-gray-600">Amount: ₹${(o.amount != null) ? Number(o.amount).toFixed(2) : '0.00'}</p>
-        <p class="text-sm text-gray-600">Tellecaller: ${o.tellicaller || '-'}</p>
-        <p class="text-sm text-gray-600">Order ID: ${o.externalOrderId && o.externalOrderId !== '' ? o.externalOrderId : 'Not Defined'}</p>
-      `;
-
-      const rightBtnWrap = document.createElement('div');
-      rightBtnWrap.className = 'flex flex-col items-end gap-2';
-      const viewBtn = document.createElement('button');
-      viewBtn.className = 'bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm';
-      viewBtn.textContent = 'View';
-      // open modal with full details (uses phone + orderId)
-      viewBtn.addEventListener('click', (ev) => {
-        ev.stopPropagation();
-        openCustomerModal(o.phone, o.orderId);
-      });
-      rightBtnWrap.appendChild(viewBtn);
-
-      // add remark / call button
-      const remarkBtn = document.createElement("button");
-      remarkBtn.textContent = o.oodRemark || "Call";
-      remarkBtn.className = "px-3 py-1 rounded " + getBtnClass(o.oodRemark);
-      remarkBtn.addEventListener('click', ()=> {
-        // inline editor for remark
-        const editor = document.createElement('div');
-        editor.className = 'flex items-center gap-2 mt-3';
-
-        const select = document.createElement('select'); select.className = 'border p-1 rounded text-sm';
-        ["Agree","Not Picked","Refused"].forEach(opt=>{
-          const option = document.createElement('option'); option.value = opt; option.textContent = opt;
-          if ((o.oodRemark||"") === opt) option.selected = true;
-          select.appendChild(option);
-        });
-
-        const saveBtn = document.createElement('button'); saveBtn.className = 'px-3 py-1 bg-green-600 text-white rounded text-sm'; saveBtn.textContent = 'Save';
-        const cancelBtn = document.createElement('button'); cancelBtn.className = 'px-3 py-1 bg-gray-300 text-black rounded text-sm'; cancelBtn.textContent = 'Cancel';
-
-        editor.appendChild(select); editor.appendChild(saveBtn); editor.appendChild(cancelBtn);
-        remarkBtn.style.display = 'none';
-        card.appendChild(editor);
-
-        saveBtn.addEventListener('click', async ()=> {
-          const remark = select.value;
-          await ordersRef.child(o.orderId).update({ oodRemark: remark, oodLastUpdated: Date.now() });
-          showToast('OOD remark saved');
-          editor.remove();
-          remarkBtn.textContent = remark;
-          remarkBtn.className = 'px-3 py-1 rounded ' + getBtnClass(remark);
-          remarkBtn.style.display = '';
-          renderOOD();
-        });
-
-        cancelBtn.addEventListener('click', ()=> {
-          editor.remove();
-          remarkBtn.style.display = '';
-        });
-      });
-      rightBtnWrap.appendChild(remarkBtn);
-
-      // assemble main row
-      const row = document.createElement('div');
-      row.className = 'flex justify-between items-start';
-      const leftWrap = document.createElement('div');
-      leftWrap.appendChild(left);
-      row.appendChild(leftWrap);
-      row.appendChild(rightBtnWrap);
-      card.appendChild(row);
-
-      // actions for not closed orders
-      if (o.status !== 'closed') {
-        const actions = document.createElement('div'); actions.className = 'mt-3 flex gap-2';
-
-        const delBtn = document.createElement('button');
-        delBtn.className = 'px-3 py-1 bg-blue-600 text-white rounded text-sm';
-        delBtn.textContent = 'Mark Delivered';
-        delBtn.addEventListener('click', ()=> closeOrderWithType(o.orderId, 'Delivered'));
-
-        const rtoInput = document.createElement('input');
-        rtoInput.placeholder = 'RTO Remark';
-        rtoInput.className = 'border p-1 rounded text-sm';
-
-        const rtoBtn = document.createElement('button');
-        rtoBtn.className = 'px-3 py-1 bg-red-600 text-white rounded text-sm';
-        rtoBtn.textContent = 'Mark RTO';
-        rtoBtn.addEventListener('click', ()=> {
-          if (!rtoInput.value || !rtoInput.value.trim()) { alert('Please enter remark for RTO'); return; }
-          closeOrderWithType(o.orderId, 'RTO', rtoInput.value.trim());
-        });
-
-        actions.appendChild(delBtn);
-        actions.appendChild(rtoInput);
-        actions.appendChild(rtoBtn);
-        card.appendChild(actions);
-      } else {
-        // closed - show big status
-        const statusDiv = document.createElement('div');
-        statusDiv.className = 'mt-3 text-sm font-semibold';
-        statusDiv.textContent = 'Status: ' + (o.closedType || 'Closed');
-        if (o.closedType === 'Delivered') statusDiv.classList.add('text-green-600');
-        if (o.closedType === 'RTO') statusDiv.classList.add('text-red-600');
-        card.appendChild(statusDiv);
-      }
-
-      container.appendChild(card);
-    });
-
-  } // end renderOOD
-
-  /******** Customer modal (mirrors Order-Management.html layout) ********/
-  function openCustomerModal(phone, highlightOrderId = null) {
-    // try to find customer data — if your system has a customers node, prefer it.
-    // For compatibility we look through orders to collect customer info and history.
-    const allOrders = Object.values(firebaseOrders || {});
-    const customerOrders = allOrders.filter(o => o && o.phone === phone);
-    if (!customerOrders.length) {
-      alert('No customer record found for phone: ' + phone);
-      return;
-    }
-
-    // reduce to one 'customer' snapshot using latest order fields as fallback
-    const latest = customerOrders.reduce((a,b) => ( (b.timestamp||0) > (a.timestamp||0) ? b : a ), customerOrders[0]);
-
-    const cust = {
-      firstName: latest.firstName || '',
-      lastName: latest.lastName || '',
-      phone: latest.phone || phone,
-      address: latest.address || '',
-      city: latest.city || '',
-      state: latest.state || '',
-      pincode: latest.pincode || '',
-      tellicallerLast: latest.tellicaller || ''
+    const orderId = generateOrderId();
+    const payload = {
+      perPrice: perPrice,
+      quantity: quantity,
+      orderId,
+      firstName, lastName, phone, tellicaller,
+      address, city, state, pincode,
+      amount, status,
+      externalOrderId: '',
+      timestamp: Date.now(),
+      product: product,
+      cancelled: false
     };
 
-    document.getElementById('custTitle').textContent = `Customer — ${cust.firstName || ''} ${cust.lastName || ''}`;
+    try {
+      const todayKeyLocal = new Date().toISOString().split('T')[0];
+      if (scheduledDateVal && scheduledDateVal !== todayKeyLocal) {
+        const schedPayload = Object.assign({}, payload, {
+          scheduledDate: scheduledDateVal,
+          scheduledAt: Date.now(),
+          createdBy: currentUser.name || tellicaller
+        });
+        await scheduleRef.child(scheduledDateVal).child(orderId).set(schedPayload);
 
-    const details = document.getElementById('customerDetails');
-    details.innerHTML = ''; // clear
+        const phoneKey = phone;
+        const existing = customersSnapshot[phoneKey] || null;
+        if (existing) {
+          const scheduledMap = existing.scheduledOrders || {};
+          scheduledMap[orderId] = scheduledDateVal;
+          const updateObj = {
+            firstName: existing.firstName || firstName,
+            lastName: existing.lastName || lastName,
+            address: existing.address || address,
+            city: existing.city || city,
+            state: existing.state || state,
+            pincode: existing.pincode || pincode,
+            tellicallerLast: tellicaller,
+            scheduledOrders: scheduledMap
+          };
+          await customersRef.child(phoneKey).update(updateObj);
+        } else {
+          const newCust = {
+            firstName, lastName, phone,
+            address, city, state, pincode,
+            tellicallerLast: tellicaller,
+            createdAt: Date.now(),
+            orders: {},
+            scheduledOrders: {}
+          };
+          newCust.scheduledOrders[orderId] = scheduledDateVal;
+          await customersRef.child(phoneKey).set(newCust);
+        }
 
-    // Customer Info Card
+        modalBackdrop.style.display = 'none';
+        modalBackdrop.classList.add('hidden');
+        showToast('Order scheduled for ' + scheduledDateVal);
+        return;
+      }
+
+      await ordersRef.child(orderId).set(payload);
+
+      const phoneKey = phone;
+      const existing = customersSnapshot[phoneKey] || null;
+      if (existing) {
+        const ordersMap = existing.orders || {};
+        ordersMap[orderId] = true;
+        const updateObj = {
+          firstName: existing.firstName || firstName,
+          lastName: existing.lastName || lastName,
+          address: existing.address || address,
+          city: existing.city || city,
+          state: existing.state || state,
+          pincode: existing.pincode || pincode,
+          tellicallerLast: tellicaller,
+          orders: ordersMap
+        };
+        await customersRef.child(phoneKey).update(updateObj);
+      } else {
+        const newCust = {
+          firstName, lastName, phone,
+          address, city, state, pincode,
+          tellicallerLast: tellicaller,
+          createdAt: Date.now(),
+          orders: {}
+        };
+        newCust.orders[orderId] = true;
+        await customersRef.child(phoneKey).set(newCust);
+      }
+
+      modalBackdrop.style.display = 'none';
+      modalBackdrop.classList.add('hidden');
+      showToast('Order saved');
+    } catch (err) {
+      console.error(err);
+      alert('Error saving order: ' + (err.message || err));
+    }
+  });
+
+  /******** Customer modal: order history + cancel button ********/
+  function openCustomerModal(phone, highlightOrderId = null) {
+    const customer = customersSnapshot[phone] || null;
+    if (!customer) { alert('No customer record found for phone: ' + phone); return; }
+    custTitle.textContent = `Customer — ${customer.firstName || ''} ${customer.lastName || ''}`;
+    customerDetails.innerHTML = '';
+
     const infoCard = document.createElement('div');
     infoCard.className = 'p-5 rounded-xl bg-gradient-to-r from-green-50 to-white shadow-md';
     infoCard.innerHTML = `
       <h4 class="font-semibold text-lg mb-3 text-green-800">👤 Customer Information</h4>
       <div class="grid grid-cols-2 gap-3 text-sm text-gray-700">
-        <div><b>First Name:</b> ${cust.firstName || '-'}</div>
-        <div><b>Last Name:</b> ${cust.lastName || '-'}</div>
-        <div><b>Phone:</b> ${cust.phone || '-'}</div>
-        <div><b>City:</b> ${cust.city || '-'}</div>
-        <div><b>State:</b> ${cust.state || '-'}</div>
-        <div><b>Pincode:</b> ${cust.pincode || '-'}</div>
-        <div class="col-span-2"><b>Address:</b> ${cust.address || '-'}</div>
-      </div>
-    `;
-    details.appendChild(infoCard);
+        <div><b>First Name:</b> ${customer.firstName || '-'}</div>
+        <div><b>Last Name:</b> ${customer.lastName || '-'}</div>
+        <div><b>Phone:</b> ${customer.phone || '-'}</div>
+        <div><b>City:</b> ${customer.city || '-'}</div>
+        <div><b>State:</b> ${customer.state || '-'}</div>
+        <div><b>Pincode:</b> ${customer.pincode || '-'}</div>
+        <div class="col-span-2"><b>Address:</b> ${customer.address || '-'}</div>
+      </div>`;
+    customerDetails.appendChild(infoCard);
 
-    // Order History Card
     const histCard = document.createElement('div');
-    histCard.className = 'p-5 rounded-xl bg-white shadow-md mt-4';
+    histCard.className = 'p-5 rounded-xl bg-white shadow-md';
     histCard.innerHTML = `<h4 class="font-semibold text-lg mb-3 text-gray-800">📦 Order History</h4>`;
 
     const histList = document.createElement('div'); histList.className = 'space-y-3';
-    // sort by timestamp desc
-    customerOrders.sort((a,b)=> (b.timestamp || 0) - (a.timestamp || 0));
-    if (!customerOrders.length) {
+    const ordersArr = Object.values(ordersSnapshot || {}).filter(o => o.phone === phone).sort((a,b)=>b.timestamp - a.timestamp);
+
+    if (!ordersArr.length) {
       histList.innerHTML = `<div class="text-gray-500 italic">No orders yet.</div>`;
     } else {
-      customerOrders.forEach(order => {
+      ordersArr.forEach(order => {
         const wrap = document.createElement('div');
+        // different style if cancelled
         wrap.className = 'p-4 border rounded-lg bg-white hover:shadow-md transition';
+        if (order.status === 'cancelled' || order.cancelled) wrap.classList.add('order-cancelled');
 
-        // header row
-        const header = document.createElement('div');
-        header.className = 'flex justify-between items-center mb-2';
+        const header = document.createElement('div'); header.className = 'flex justify-between items-center mb-2';
         const left = document.createElement('div');
         left.innerHTML = `<div class="font-semibold text-lg">₹ ${order.amount != null ? Number(order.amount).toFixed(2) : '0.00'}</div>
-                          <div class="text-xs text-gray-500">${order.timestamp ? new Date(order.timestamp).toLocaleString() : '—'}</div>`;
+                          <div class="text-xs text-gray-500">${humanDate(order.timestamp)}</div>`;
         const right = document.createElement('div');
         const statusLabel = order.status === 'closed' ? (order.closedType || 'Closed') : (order.status || 'Open');
-        const badge = document.createElement('span');
-        badge.className = 'px-2 py-0.5 rounded text-xs text-white';
+        const badge = document.createElement('span'); badge.className = 'px-2 py-0.5 rounded text-xs text-white';
         if (order.status === 'closed') {
-          if (order.closedType === 'Delivered') badge.style.background = '#10b981';
-          else badge.style.background = '#ef4444';
+          if (order.closedType === 'Delivered') badge.style.background = '#10b981'; else badge.style.background = '#ef4444';
         } else if (order.status === 'dispatched') badge.style.background = '#0ea5a4';
+        else if (order.status === 'cancelled') badge.style.background = '#6b7280';
         else badge.style.background = '#f97316';
-        badge.textContent = statusLabel;
+        badge.textContent = (order.status === 'cancelled' ? 'Cancelled' : statusLabel);
         right.appendChild(badge);
+        header.appendChild(left); header.appendChild(right); wrap.appendChild(header);
 
-        header.appendChild(left); header.appendChild(right);
-        wrap.appendChild(header);
-
-        // body info
         const body = document.createElement('div'); body.className = 'text-sm text-gray-700';
-        const qty = order.quantity || 1;
-        const perPrice = ('perPrice' in order) ? order.perPrice : (order.amount && qty ? Number((order.amount / qty).toFixed(2)) : 0);
-        body.innerHTML = `
-          <div><b>Tellecaller:</b> ${order.tellicaller || '-'}</div>
-          <div><b>Order ID:</b> ${(order.externalOrderId && order.externalOrderId !== '') ? order.externalOrderId : 'Not Defined'}</div>
-          <div><b>Quantity:</b> ${qty} pcs</div>
-          <div><b>Per Piece:</b> ₹ ${perPrice != null ? Number(perPrice).toFixed(2) : '0.00'}</div>
-        `;
+        const dispQty = order.quantity || 1;
+        const perPriceDisp = (('perPrice' in order) ? order.perPrice : (order.amount && dispQty ? Number((order.amount/dispQty).toFixed(2)) : 0));
+        body.innerHTML = `<div><b>Product:</b> ${order.product || 'Karela Jamun Powder'}</div>
+                          <div><b>Tellecaller:</b> ${order.tellicaller || '-'}</div>
+                          <div><b>Order ID:</b> ${(order.externalOrderId && order.externalOrderId !== '') ? order.externalOrderId : 'Not Defined'}</div>
+                          <div><b>Quantity:</b> ${dispQty} pcs</div>
+                          <div><b>Per Piece:</b> ₹ ${perPriceDisp != null ? Number(perPriceDisp).toFixed(2) : '0.00'}</div>`;
         wrap.appendChild(body);
 
-        // actions for non-closed orders in history
-        if (order.status !== 'closed') {
+        if (order.status !== 'closed' && order.status !== 'cancelled') {
           const actions = document.createElement('div'); actions.className = 'mt-3 flex flex-wrap gap-2 items-center';
-
-          const idInp = document.createElement('input');
-          idInp.placeholder = 'External Order ID';
-          idInp.className = 'border p-2 rounded text-sm';
-          idInp.value = order.externalOrderId || '';
-
-          const saveIdBtn = document.createElement('button');
-          saveIdBtn.className = 'px-3 py-1 bg-green-600 text-white rounded text-sm';
-          saveIdBtn.textContent = 'Save ID';
-          saveIdBtn.addEventListener('click', async ()=> {
-            if (!idInp.value || !idInp.value.trim()) { alert('Please enter External Order ID'); return; }
-            await ordersRef.child(order.orderId).update({ externalOrderId: idInp.value.trim(), status: 'dispatched', dispatchedAt: Date.now() });
-            showToast('External Order ID saved and order marked dispatched');
-          });
-
-          const deliveredBtn = document.createElement('button');
-          deliveredBtn.className = 'px-3 py-1 bg-blue-600 text-white rounded text-sm';
-          deliveredBtn.textContent = 'Mark Delivered';
-          deliveredBtn.addEventListener('click', ()=> closeOrderWithType(order.orderId, 'Delivered'));
-
-          const rtoInp = document.createElement('input');
-          rtoInp.placeholder = 'Remark for RTO';
-          rtoInp.className = 'border p-2 rounded text-sm';
-
-          const rtoBtn = document.createElement('button');
-          rtoBtn.className = 'px-3 py-1 bg-red-600 text-white rounded text-sm';
-          rtoBtn.textContent = 'Mark RTO';
+          const rtoInp = document.createElement('input'); rtoInp.placeholder = 'Remark for RTO'; rtoInp.className = 'border p-2 rounded text-sm';
+          const rtoBtn = document.createElement('button'); rtoBtn.className = 'px-3 py-1 bg-red-600 text-white rounded text-sm'; rtoBtn.textContent = 'Mark RTO';
           rtoBtn.addEventListener('click', ()=> {
             if (!rtoInp.value || !rtoInp.value.trim()) { alert('Please enter remark for RTO'); return; }
             closeOrderWithType(order.orderId, 'RTO', rtoInp.value.trim());
           });
 
-          // Mark OOD (if still needed)
-          const oodBtn = document.createElement('button');
-          oodBtn.className = 'px-3 py-1 bg-purple-600 text-white rounded text-sm';
-          oodBtn.textContent = 'Mark OOD';
-          oodBtn.addEventListener('click', async ()=> {
-            await ordersRef.child(order.orderId).update({
-              oodStatus: "today",
-              oodMarkedAt: Date.now(),
-              oodRemark: "Call"
-            });
-            showToast("Order marked Out Of Delivery");
+          // Cancel button (red border + grey fill)
+          const cancelBtn = document.createElement('button');
+          cancelBtn.className = 'px-3 py-1 rounded text-sm';
+          cancelBtn.style.border = '2px solid #dc2626';
+          cancelBtn.style.background = '#f3f4f6';
+          cancelBtn.style.color = '#dc2626';
+          cancelBtn.textContent = 'Cancel Order';
+          cancelBtn.addEventListener('click', ()=> {
+            if (!confirm('Are you sure you want to cancel this order?')) return;
+            cancelOrder(order.orderId, 'Cancelled by tellicaller');
           });
 
-          actions.appendChild(idInp);
-          actions.appendChild(saveIdBtn);
-          actions.appendChild(deliveredBtn);
-          actions.appendChild(rtoInp);
-          actions.appendChild(rtoBtn);
-          actions.appendChild(oodBtn);
+          actions.appendChild(rtoInp); actions.appendChild(rtoBtn); actions.appendChild(cancelBtn);
+
+          // Admin-only extra controls: External ID, Save ID, Mark Delivered, Mark OOD
+          try {
+            if (filterOwner) {
+              const idInp = document.createElement('input');
+              idInp.placeholder = 'External Order ID';
+              idInp.className = 'border p-2 rounded text-sm';
+              idInp.value = order.externalOrderId || '';
+
+              const saveIdBtn = document.createElement('button');
+              saveIdBtn.className = 'px-3 py-1 bg-green-600 text-white rounded text-sm';
+              saveIdBtn.textContent = 'Save ID';
+              saveIdBtn.addEventListener('click', ()=>{ if (idInp.value && idInp.value.trim()) saveExternalOrderId(order.orderId, idInp.value.trim()); });
+
+              const deliveredBtn = document.createElement('button');
+              deliveredBtn.className = 'px-3 py-1 bg-blue-600 text-white rounded text-sm';
+              deliveredBtn.textContent = 'Mark Delivered';
+              deliveredBtn.addEventListener('click', ()=> closeOrderWithType(order.orderId, 'Delivered'));
+
+              const oodBtn = document.createElement('button');
+              oodBtn.className = 'px-3 py-1 bg-purple-600 text-white rounded text-sm';
+              oodBtn.textContent = 'Mark OOD';
+              oodBtn.addEventListener('click', async ()=> {
+                await ordersRef.child(order.orderId).update({
+                  oodStatus: 'today',
+                  oodMarkedAt: Date.now(),
+                  oodRemark: 'Call'
+                });
+                showToast('Order marked Out Of Delivery');
+              });
+
+              actions.appendChild(idInp);
+              actions.appendChild(saveIdBtn);
+              actions.appendChild(deliveredBtn);
+              actions.appendChild(oodBtn);
+            }
+          } catch(e){}
 
           wrap.appendChild(actions);
         } else {
-          if (order.closedType === 'RTO') {
-            const remarkDiv = document.createElement('div');
-            remarkDiv.className = 'mt-2 text-sm text-red-700';
-            remarkDiv.innerHTML = `<b>RTO Remark:</b> ${order.remark || '-'}`;
-            wrap.appendChild(remarkDiv);
+          if (order.status === 'cancelled') {
+            const rem = document.createElement('div'); rem.className = 'mt-2 text-sm text-gray-700';
+            rem.innerHTML = `<b>Cancelled Reason:</b> ${order.cancelledReason || order.remark || '-'}`;
+            wrap.appendChild(rem);
+          } else if (order.closedType === 'RTO') {
+            const remarkDiv = document.createElement('div'); remarkDiv.className = 'mt-2 text-sm text-red-700';
+            remarkDiv.innerHTML = `<b>RTO Remark:</b> ${order.remark || '-'}`; wrap.appendChild(remarkDiv);
           }
         }
 
@@ -448,101 +1029,427 @@
     }
 
     histCard.appendChild(histList);
-    details.appendChild(histCard);
+    customerDetails.appendChild(histCard);
 
-    // show modal
-    const back = document.getElementById('customerBackdrop');
-    back.style.display = 'flex';
-    back.classList.remove('hidden');
+    customerBackdrop.style.display = 'flex';
+    customerBackdrop.classList.remove('hidden');
   }
 
-  // modal close handlers
+  custClose.addEventListener('click', ()=>{ customerBackdrop.style.display = 'none'; customerBackdrop.classList.add('hidden'); });
+  custClose2.addEventListener('click', ()=>{ customerBackdrop.style.display = 'none'; customerBackdrop.classList.add('hidden'); });
+
+  /******** Filters, search & listeners ********/
+  searchInput.addEventListener('input', ()=> renderOrders(searchInput.value));
+  filterStatus.addEventListener('change', ()=> renderOrders(searchInput.value));
+  filterFrom.addEventListener('change', ()=> renderOrders(searchInput.value));
+  filterTo.addEventListener('change', ()=> renderOrders(searchInput.value));
+  if (filterOwner) filterOwner.addEventListener('change', ()=> renderOrders(searchInput.value));
+
+  /******** Logout & misc ********/
+  document.addEventListener('DOMContentLoaded', function() {
+    const btnLogout = document.getElementById('btnLogout');
+    if (btnLogout) {
+      btnLogout.addEventListener('click', ()=> {
+        localStorage.removeItem('currentTellicaller');
+        window.location.href = 'index.html';
+      });
+    }
+    // ensure modal close by backdrop
+    const modalBackdropEl = document.getElementById('modalBackdrop');
+    if (modalBackdropEl) modalBackdropEl.addEventListener('click', (e)=> { if (e.target === modalBackdropEl) { modalBackdropEl.style.display='none'; modalBackdropEl.classList.add('hidden'); } });
+    const customerBackdropEl = document.getElementById('customerBackdrop');
+    if (customerBackdropEl) customerBackdropEl.addEventListener('click', (e)=> { if (e.target === customerBackdropEl) { customerBackdropEl.style.display='none'; customerBackdropEl.classList.add('hidden'); } });
+  });
+
+  
+  // Pincode auto-fill
+  if (fPincode) {
+    fPincode.addEventListener('input', ()=>{
+      const pin = fPincode.value.trim();
+      if (pin.length === 6) {
+        fetch(`https://api.postalpincode.in/pincode/${pin}`)
+        .then(res=>res.json())
+        .then(data=>{
+          if (Array.isArray(data) && data[0].Status === 'Success') {
+            const po = data[0].PostOffice && data[0].PostOffice[0];
+            if (!po) return;
+            fCity.value = po.District || '';
+            fState.value = po.State || '';
+          }
+        }).catch(err=>console.error('Pincode fetch error', err));
+      }
+    });
+  }
+
+</script>
+
+<script>
+// Reorder button logic: when clicked, populate Add Order modal with customer data and open it.
+// The customer details pane renders inside #customerDetails; to support this, when rendering customer details
+// make sure each data point is stored as data- attributes or we parse values from DOM nodes.
+// We'll implement a simple extraction: look for elements inside #customerDetails with ids we can map to form fields.
+// If not present, the view details normally contains Name, Phone, Address, City, State, Pincode, Product, Quantity, Per Price.
+// We'll attempt to find them by common selectors; if not found, we try to use dataset from the clicked order (data-order-json).
+
+function openAddOrderModalWithData(details) {
+  // Close the customer details modal if it's open so only Add Order modal is visible
+  try {
+    const custBack = document.getElementById('customerBackdrop');
+    if (custBack && !custBack.classList.contains('hidden')) custBack.classList.add('hidden');
+    // ensure any other conflicting modals are hidden
+    const mb = document.getElementById('modalBackdrop');
+    if (mb) mb.classList.remove('hidden');
+    // briefly delay to allow DOM to reflow so Add Order modal is on top
+    setTimeout(()=>{ if (mb) mb.style.zIndex = 99999; }, 50);
+  } catch(e){ console.warn('reorder: modal hide error', e); }
+
+  // open modal
+  document.getElementById('modalBackdrop').classList.remove('hidden');
+  // set modal title to Reorder
+  document.getElementById('modalTitle').innerText = 'Reorder - Edit & Place Order';
+  // populate fields if present
+  const setIf = (id, val) => { const el = document.getElementById(id); if (!el) return; el.value = val || ''; el.dispatchEvent(new Event('input')); };
+  setIf('firstName', details.firstName || details.name || '');
+  setIf('lastName', details.lastName || details.lastName || '');
+  setIf('phone', details.phone || details.mobile || '');
+  setIf('tellicaller', details.tellicaller || ''); // keep the current tellicaller blank if not provided
+  setIf('address', details.address || details.addressLine || '');
+  setIf('city', details.city || '');
+  setIf('state', details.state || '');
+  setIf('pincode', details.pincode || details.pin || '');
+  setIf('perPrice', details.perPrice || details.price || '');
+  setIf('quantity', details.quantity || details.qty || 1);
+  // compute amount if perPrice and quantity present
+  try {
+    const p = parseFloat(document.getElementById('perPrice').value) || 0;
+    const q = parseInt(document.getElementById('quantity').value) || 1;
+    document.getElementById('amount').value = (p * q).toFixed(2);
+  } catch(e){}
+  // product select
+  if (details.product) {
+    const prod = document.getElementById('productSelect');
+    if (prod) prod.value = details.product;
+  }
+  // focus phone field for quick edit
+  const ph = document.getElementById('phone'); if (ph) ph.focus();
+}
+
+// Attach click handler to Reorder button in customer modal
+
+document.addEventListener('click', function(e){
+  if (e.target && (e.target.id === 'btnReorder' || (e.target.closest && e.target.closest('#btnReorder')))) {
+    const container = document.getElementById('customerDetails');
+    const details = {};
+    if (!container) { openAddOrderModalWithData(details); return; }
+
+    // 1) If data-order-json is present on container, prefer it.
+    if (container.dataset && container.dataset.orderJson) {
+      try { Object.assign(details, JSON.parse(container.dataset.orderJson)); } catch(e){ console.warn('parse dataset orderJson', e); }
+    }
+
+    const text = container.innerText || '';
+    // 2) Name extraction: look for headings or labels
+    const nameSelectors = ['h1','h2','h3','h4','.font-bold','.text-xl','.text-2xl'];
+    let nameFound = false;
+    for (const sel of nameSelectors) {
+      const el = container.querySelector(sel);
+      if (el && el.innerText && el.innerText.trim().length>1) {
+        // If heading contains 'Customer' word, take the next text or the part after '—' if present
+        let t = el.innerText.trim();
+        if (/Customer\s*—/i.test(t)) {
+          const parts = t.split('—'); if (parts.length>1) t = parts[1].trim();
+        }
+        details.firstName = t.split('\n')[0].trim();
+        nameFound = true; break;
+      }
+    }
+    // fallback: try label 'First Name' in the text
+    if (!nameFound) {
+      const fnMatch = text.match(/First\s*Name\s*[:\-]?\s*([A-Za-z\s.'-]{2,})/i);
+      if (fnMatch) details.firstName = fnMatch[1].trim();
+    }
+
+    // 3) Address extraction: look for label 'Address' or long paragraph with commas
+    const addrEl = Array.from(container.querySelectorAll('p,div,span')).find(n => /Address\b|Address\s*:/i.test(n.innerText||''));
+    if (addrEl) {
+      // remove label part if present
+      const val = addrEl.innerText.replace(/Address\s*[:\-]?/i,'').trim();
+      details.address = val;
+    } else {
+      // fallback: find the longest text block (likely address)
+      const longEl = Array.from(container.querySelectorAll('p,div,span')).sort((a,b)=> (b.innerText||'').length - (a.innerText||'').length)[0];
+      if (longEl && (longEl.innerText||'').length > 30) details.address = longEl.innerText.trim();
+    }
+
+    // 4) Phone
+    if (!details.phone) {
+      const phoneMatch = text.match(/(\+?\d{10,13})/);
+      if (phoneMatch) details.phone = phoneMatch[1];
+    }
+    // 5) City / State / Pincode
+    if (!details.pincode) {
+      const pinMatch = text.match(/\b(\d{6})\b/);
+      if (pinMatch) details.pincode = pinMatch[1];
+    }
+    if (!details.city) {
+      const cityMatch = text.match(/City\s*[:\-]?\s*([A-Za-z\s]+)/i);
+      if (cityMatch) details.city = cityMatch[1].trim();
+    }
+    if (!details.state) {
+      const stateMatch = text.match(/State\s*[:\-]?\s*([A-Za-z\s]+)/i);
+      if (stateMatch) details.state = stateMatch[1].trim();
+    }
+
+    // 6) Product/Price/Qty heuristics (unchanged)
+    const prodEl = Array.from(container.querySelectorAll('div, p, span')).find(n=>/(product|karela|men wellness|per price|per piece|quantity)/i.test(n.innerText||''));
+    if (prodEl) {
+      const t = prodEl.innerText.trim();
+      if (/karela/i.test(t)) details.product = 'Karela Jamun Powder';
+      else if (/men wellness/i.test(t)) details.product = 'Men Wellness';
+      const qtyMatch = t.match(/(Qty|Quantity)\s*[:\-]?\s*(\d+)/i);
+      if (qtyMatch) details.quantity = qtyMatch[2];
+      const priceMatch = t.match(/(Per Price|Price|₹|INR)\s*[:\-]?\s*([0-9,.]+)/i);
+      if (priceMatch) details.perPrice = priceMatch[2].replace(/,/g,'');
+    }
+
+    // Close the customer modal and open Add Order modal with details
+    try { const cb=document.getElementById('customerBackdrop'); if(cb) cb.classList.add('hidden'); } catch(e) {}
+    openAddOrderModalWithData(details);
+  }
+
+  // Keep other click handlers intact
+});
+ return;
+    }
+    // Try common selectors inside container
+    // Look for elements with data-label or identifiable text nodes
+    const text = container.innerText || '';
+    // Heuristics: find phone by regex, pincode by 6-digit, city/state by labels
+    const phoneMatch = text.match(/(\+?\d{10,13})/);
+    if (phoneMatch) details.phone = phoneMatch[1];
+    const pinMatch = text.match(/\b(\d{6})\b/);
+    if (pinMatch) details.pincode = pinMatch[1];
+    // try to pick name from header titles
+    const nameEl = container.querySelector('h4, h3, .font-bold, .text-xl');
+    if (nameEl) details.firstName = nameEl.innerText.trim().split('\n')[0];
+    // address lines
+    const addrEl = Array.from(container.querySelectorAll('p, div')).find(n=>/(address|addr|house|road)/i.test(n.innerText||''));
+    if (addrEl) details.address = addrEl.innerText.trim();
+    // product/price/qty detection
+    const prodEl = Array.from(container.querySelectorAll('div, p, span')).find(n=>/(product|karela|men wellness|per price|per piece|quantity)/i.test(n.innerText||''));
+    if (prodEl) {
+      const t = prodEl.innerText.trim();
+      if (/karela/i.test(t)) details.product = 'Karela Jamun Powder';
+      else if (/men wellness/i.test(t)) details.product = 'Men Wellness';
+      const qtyMatch = t.match(/(Qty|Quantity)\s*[:\-]?\s*(\d+)/i);
+      if (qtyMatch) details.quantity = qtyMatch[2];
+      const priceMatch = t.match(/(Per Price|Price|₹|INR)\s*[:\-]?\s*([0-9,.]+)/i);
+      if (priceMatch) details.perPrice = priceMatch[2].replace(/,/g,'');
+    }
+    // If the modal was opened from a specific order, store JSON on the container (some code sets data-order-json)
+    if (container.dataset && container.dataset.orderJson) {
+      try { const fromJson = JSON.parse(container.dataset.orderJson); Object.assign(details, fromJson); } catch(e){}
+    }
+    // open add order modal with extracted details
+    openAddOrderModalWithData(details); // opened add order modal, customer modal hidden above
+  }
+});
+
+// Also if the view-details popup has a Reorder button per-order, we add listener when rendering order cards.
+// If order cards set data-order-json attribute on row, we can use it. The code that generates order rows already appends the customer modal content.
+// We'll also provide a helper function to trigger from other places:
+function reorderFromOrderJson(orderJsonStr) {
+  try {
+    const order = JSON.parse(orderJsonStr);
+    // map fields
+    const details = {
+      firstName: order.firstName || order.name || '',
+      lastName: order.lastName || '',
+      phone: order.phone || order.mobile || order.customerPhone || '',
+      address: order.address || order.addressLine || '',
+      city: order.city || order.town || '',
+      state: order.state || '',
+      pincode: order.pincode || order.pinCode || '',
+      product: order.product || order.productName || '',
+      perPrice: order.perPrice || order.price || '',
+      quantity: order.quantity || order.qty || 1
+    };
+    openAddOrderModalWithData(details); // opened add order modal, customer modal hidden above
+  } catch(e){ console.error('reorderFromOrderJson parse', e); }
+}
+</script>
+
+
+<script>
+(function(){
+  // Helper to safely set value and trigger input events
+  function setValue(id, val) {
+    try {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.value = val === undefined || val === null ? '' : val;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    } catch(e){ console.warn('setValue error', id, e); }
+  }
+  function openAddModalAndFill(details) {
+    try {
+      // Hide customer modal
+      const cust = document.getElementById('customerBackdrop');
+      if (cust && !cust.classList.contains('hidden')) cust.classList.add('hidden');
+      // Show add order modal
+      const add = document.getElementById('modalBackdrop');
+      if (add) {
+        add.classList.remove('hidden');
+        add.style.zIndex = 99999;
+      }
+      document.body.style.overflow = 'hidden';
+      // Fill form fields
+      setValue('firstName', details.firstName || details.name || '');
+      setValue('lastName', details.lastName || details.lastName || '');
+      setValue('phone', details.phone || details.mobile || '');
+      setValue('tellicaller', details.tellicaller || '');
+      setValue('address', details.address || '');
+      setValue('city', details.city || '');
+      setValue('state', details.state || '');
+      setValue('pincode', details.pincode || details.pin || '');
+      setValue('perPrice', details.perPrice || details.price || '');
+      setValue('quantity', details.quantity || details.qty || 1);
+      // product select if available
+      if (details.product) {
+        const prod = document.getElementById('productSelect');
+        if (prod) {
+          // try to set exact match, otherwise set first option
+          const opts = Array.from(prod.options);
+          const match = opts.find(o=> (o.text || '').toLowerCase().includes((details.product+'').toLowerCase()));
+          if (match) prod.value = match.value;
+          else prod.selectedIndex = 0;
+          prod.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      }
+      // compute amount if possible
+      try {
+        const p = parseFloat(document.getElementById('perPrice').value) || 0;
+        const q = parseInt(document.getElementById('quantity').value) || 1;
+        setValue('amount', (p*q).toFixed(2));
+      } catch(e){}
+      // focus on phone for quick edit
+      const ph = document.getElementById('phone'); if (ph) ph.focus();
+    } catch(e){ console.error('openAddModalAndFill', e); }
+  }
+
+  // Robust extractor from #customerDetails DOM
+  function extractDetailsFromCustomerModal() {
+    const container = document.getElementById('customerDetails');
+    const details = {};
+    if (!container) return details;
+
+    // Prefer dataset JSON if present
+    try {
+      if (container.dataset && container.dataset.orderJson) {
+        const parsed = JSON.parse(container.dataset.orderJson);
+        Object.assign(details, parsed);
+      }
+    } catch(e){}
+
+    const text = container.innerText || '';
+
+    // Name heuristics: look for headings containing non-empty text
+    const heading = container.querySelector('h1,h2,h3,h4,.font-bold,.text-xl,.text-2xl');
+    if (heading && heading.innerText.trim()) {
+      let t = heading.innerText.trim();
+      // if heading contains em dash or dash, split and take name part
+      if (t.indexOf('—') !== -1) t = t.split('—').pop().trim();
+      if (t.indexOf('-') !== -1 && t.toLowerCase().includes('customer')) t = t.split('-').pop().trim();
+      details.firstName = t;
+    }
+
+    // Try label-value pairs inside container
+    // We search for nodes that contain "First Name", "Phone", "Address", "City", "State", "Pincode"
+    const nodes = Array.from(container.querySelectorAll('div, p, span, li'));
+    nodes.forEach(n => {
+      const txt = (n.innerText || '').trim();
+      if (!txt) return;
+      const lower = txt.toLowerCase();
+      // First Name
+      const mFN = txt.match(/first\s*name\s*[:\-]?\s*(.+)/i);
+      if (mFN) details.firstName = mFN[1].trim();
+      const mLN = txt.match(/last\s*name\s*[:\-]?\s*(.+)/i);
+      if (mLN) details.lastName = mLN[1].trim();
+      const mPhone = txt.match(/phone\s*[:\-]?\s*(\+?\d{10,13})/i);
+      if (mPhone) details.phone = mPhone[1].trim();
+      // generic phone fallback: any 10+ digit number
+      const anyPhone = txt.match(/(\+?\d{10,13})/);
+      if (anyPhone && !details.phone) details.phone = anyPhone[1];
+      const mPincode = txt.match(/\b(\d{6})\b/);
+      if (mPincode) details.pincode = mPincode[1];
+      const mCity = txt.match(/city\s*[:\-]?\s*([A-Za-z\s]+)/i);
+      if (mCity) details.city = mCity[1].trim();
+      const mState = txt.match(/state\s*[:\-]?\s*([A-Za-z\s]+)/i);
+      if (mState) details.state = mState[1].trim();
+      const mAddress = txt.match(/address\s*[:\-]?\s*(.+)/i);
+      if (mAddress) details.address = mAddress[1].trim();
+      // If node looks long (likely address) and details.address not set, take it
+      if (!details.address && txt.length > 40) details.address = txt;
+      // product/price/qty heuristics
+      if (/product|per piece|per price|quantity|qty|karela|men wellness|price|₹|INR/i.test(txt)) {
+        if (/karela/i.test(txt)) details.product = 'Karela Jamun Powder';
+        else if (/men wellness/i.test(txt)) details.product = 'Men Wellness';
+        const qMatch = txt.match(/(qty|quantity)\s*[:\-]?\s*(\d+)/i);
+        if (qMatch) details.quantity = qMatch[2];
+        const prMatch = txt.match(/(per price|per piece|price|₹|INR)\s*[:\-]?\s*([0-9,.\s]+)/i);
+        if (prMatch) details.perPrice = prMatch[2].replace(/,/g,'').trim();
+      }
+    });
+
+    // As final fallback, try text-level regex for name like "Customer — Name"
+    const nameDash = text.match(/customer\s*[—:-]\s*([A-Za-z\s.'-]{2,})/i);
+    if (nameDash && !details.firstName) details.firstName = nameDash[1].trim();
+
+    return details;
+  }
+
+  // Attach a direct listener to the reorder button after DOM loaded
+  function attachReorderHandler() {
+    const btn = document.getElementById('btnReorder');
+    if (!btn) return;
+    btn.addEventListener('click', function(ev){
+      ev.preventDefault();
+      try {
+        const details = extractDetailsFromCustomerModal();
+        // If still missing address or name, try reading data-order-json from parent .order-card element
+        if ((!details.firstName || !details.address) && ev.target) {
+          // find closest ancestor that has data-order-json attribute
+          let el = ev.target;
+          while (el && el !== document.body) {
+            if (el.dataset && el.dataset.orderJson) {
+              try { Object.assign(details, JSON.parse(el.dataset.orderJson)); break; } catch(e) {}
+            }
+            el = el.parentElement;
+          }
+        }
+        openAddModalAndFill(details);
+      } catch(e){ console.error('Reorder handler error', e); }
+    });
+  }
+
+  // run on DOMContentLoaded or immediately if ready
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', attachReorderHandler);
+  } else attachReorderHandler();
+
+  // Ensure that when modal close buttons hide modalBackdrop we restore body overflow
   document.addEventListener('click', function(e){
-    // don't break if elements not present yet
-  });
-  (function attachModalClosers(){
-    const custClose = document.getElementById('custClose');
-    const custClose2 = document.getElementById('custClose2');
-    const back = document.getElementById('customerBackdrop');
-    if (custClose) custClose.addEventListener('click', ()=> { back.style.display = 'none'; back.classList.add('hidden'); });
-    if (custClose2) custClose2.addEventListener('click', ()=> { back.style.display = 'none'; back.classList.add('hidden'); });
-    if (back) {
-      back.addEventListener('click', function(e){ if (e.target === back) { back.style.display='none'; back.classList.add('hidden'); }});
+    if (e.target && (e.target.id === 'modalClose' || e.target.id === 'btnCancel' || e.target.id === 'custClose' || e.target.id === 'custClose2')) {
+      try {
+        const mb = document.getElementById('modalBackdrop');
+        if (mb && mb.classList.contains('hidden')) document.body.style.overflow = '';
+      } catch(e){}
     }
-  })();
-
-  /******** Pending list ********/
-  function renderPending() {
-    const sec = document.getElementById("pendingSection");
-    const cont = document.getElementById("pendingContainer");
-    cont.innerHTML = "";
-    sec.classList.remove("hidden");
-
-    let pendings = Object.values(firebaseOrders || {}).filter(o =>
-      o && o.oodStatus === "today" && o.oodMarkedAt && !isToday(o.oodMarkedAt) && o.status !== 'closed'
-    );
-
-    if (!pendings.length) {
-      cont.innerHTML = `<p class="text-gray-500">No pending OOD follow-ups.</p>`;
-      return;
-    }
-
-    pendings.forEach(o => {
-      const card = document.createElement('div');
-      card.className = 'order-card bg-white p-4 rounded shadow border';
-      card.innerHTML = `
-        <h2 class="font-semibold text-lg text-blue-700">${o.firstName||''} ${o.lastName||''}</h2>
-        <p class="text-sm">Phone: ${o.phone}</p>
-        <p class="text-sm">Tellecaller: ${o.tellicaller}</p>
-        <p class="text-sm">Remark: ${o.oodRemark||'Pending'}</p>
-      `;
-
-      // add actions same as main list
-      if (o.status !== 'closed') {
-        const actions = document.createElement('div'); actions.className = 'mt-3 flex gap-2';
-        const delBtn = document.createElement('button'); delBtn.className = 'px-3 py-1 bg-blue-600 text-white rounded text-sm'; delBtn.textContent = 'Mark Delivered';
-        delBtn.addEventListener('click', ()=> closeOrderWithType(o.orderId, 'Delivered'));
-        const rtoInput = document.createElement('input'); rtoInput.placeholder = 'RTO Remark'; rtoInput.className = 'border p-1 rounded text-sm';
-        const rtoBtn = document.createElement('button'); rtoBtn.className = 'px-3 py-1 bg-red-600 text-white rounded text-sm'; rtoBtn.textContent = 'Mark RTO';
-        rtoBtn.addEventListener('click', ()=> {
-          if (!rtoInput.value.trim()) { alert('Please enter remark for RTO'); return; }
-          closeOrderWithType(o.orderId, 'RTO', rtoInput.value.trim());
-        });
-        actions.appendChild(delBtn); actions.appendChild(rtoInput); actions.appendChild(rtoBtn);
-        card.appendChild(actions);
-      }
-
-      cont.appendChild(card);
-    });
-  }
-
-  /******** Firebase listener and wiring ********/
-  ordersRef.on('value', snap => {
-    firebaseOrders = snap.val() || {};
-    // normalize if needed (optional)
-    Object.keys(firebaseOrders).forEach(k => {
-      const o = firebaseOrders[k] || {};
-      if (!('quantity' in o)) o.quantity = 1;
-      if (!('perPrice' in o)) {
-        const q = o.quantity || 1;
-        o.perPrice = (o.amount && q ? parseFloat((o.amount / q).toFixed(2)) : 0);
-      }
-      // ensure amount numeric
-      if (o.amount !== undefined && o.amount !== null) o.amount = Number(o.amount);
-      firebaseOrders[k] = o;
-    });
-    renderOOD();
   });
 
-  // wire UI controls safely after DOM is ready
-  document.addEventListener('DOMContentLoaded', function(){
-    const filter = document.getElementById('filterOOD');
-    const pendingBtn = document.getElementById('pendingBtn');
-    if (filter) filter.addEventListener('change', renderOOD);
-    if (pendingBtn) pendingBtn.addEventListener('click', renderPending);
-  });
+})(); 
+</script>
 
-  </script>
 </body>
 </html>
-

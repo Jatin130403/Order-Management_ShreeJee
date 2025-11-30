@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>History — Delivered Orders by Tellicaller</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background: linear-gradient(120deg,#0f766e,#10b981); min-height:100vh; }
+    .glass { background: rgba(255,255,255,0.10); backdrop-filter: blur(6px); border: 1px solid rgba(255,255,255,0.06); }
+    .tel-scroll { display:flex; gap:8px; overflow-x:auto; padding:8px; }
+    .tel-chip { white-space:nowrap; padding:8px 12px; border-radius:999px; cursor:pointer; background:rgba(255,255,255,0.06); color:#e6f6f0; }
+    .tel-chip.active { background:#065f46; color:#fff; box-shadow:0 6px 18px rgba(2,6,23,0.28); }
+    .count-bubble { background:#fef3c7; color:#92400e; border-radius:999px; padding:6px 10px; font-weight:700; }
+    .order-row:hover { transform:translateY(-3px); box-shadow:0 10px 30px rgba(2,6,23,0.12); }
+    .small-muted{ color:rgba(255,255,255,0.85); font-size:0.9rem; }
+    input[type="date"], select, input[type="text"] { background: #ffffff; }
+    .action-wrap { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+    @media (min-width: 1024px) {
+      .nav-grid { display:grid; grid-template-columns: 1fr auto; gap:16px; align-items:center; }
+    }
+    @media (max-width: 640px) {
+      .tel-chip { padding:6px 10px; font-size:0.9rem; }
+    }
+  </style>
+</head>
+<body class="font-sans text-white">
+
+  <nav class="p-4">
+    <div class="max-w-6xl mx-auto nav-grid glass rounded-xl p-4">
+      <div class="flex items-center gap-3">
+        <img src="logo.jpg" alt="logo" class="h-10 w-10 rounded-full" onerror="this.style.display='none'">
+        <div>
+          <div class="font-bold text-lg">ShreeJee Ayucare — History</div>
+          <div id="selectedTelTop" class="small-muted">All Tellicallers</div>
+        </div>
+      </div>
+
+      <div class="text-right small-muted">
+        <div>Delivered (unpaid) count</div>
+        <div id="deliveredCount" class="count-bubble inline-block mt-2">0</div>
+      </div>
+    </div>
+  </nav>
+
+  <main class="max-w-6xl mx-auto p-6 space-y-6">
+
+    <section class="glass rounded-xl p-4 grid gap-4 md:grid-cols-2 lg:grid-cols-3 items-center">
+
+      <div>
+        <div class="text-sm small-muted">Select Tellicaller</div>
+        <div class="tel-scroll mt-3" id="telScroll" role="list"></div>
+      </div>
+
+      <div class="flex flex-col sm:flex-row sm:items-center gap-3">
+        <div class="flex items-center gap-2">
+          <label class="small-muted text-sm">From</label>
+          <input id="fromDate" type="date" class="rounded p-2 text-black" />
+          <label class="small-muted text-sm">To</label>
+          <input id="toDate" type="date" class="rounded p-2 text-black" />
+        </div>
+        <div class="flex-1">
+          <input id="qSearch" placeholder="Search name / phone / order id" class="p-2 rounded text-black w-full" />
+        </div>
+      </div>
+
+      <!-- EXPORT CSV BUTTON REMOVED -->
+      <div class="action-wrap justify-end">
+        <button id="btnPaid" class="px-4 py-2 rounded font-semibold bg-green-600 text-white">Paid (mark shown delivered as paid)</button>
+
+        <label class="flex items-center gap-2 small-muted">
+          <input id="showPaidToggle" type="checkbox" class="rounded" />
+          <span>Show paid</span>
+        </label>
+      </div>
+    </section>
+
+    <div class="flex items-center gap-3">
+      <select id="telSelect" class="p-2 rounded text-black">
+        <option value="__all__">— All Tellicallers —</option>
+      </select>
+      <div class="flex-1"></div>
+    </div>
+
+    <section id="listSection" class="space-y-4"></section>
+
+    <p id="noData" class="text-center small-muted">No delivered orders found for the selected tellicaller / range.</p>
+
+  </main>
+
+  <!-- Confirmation Modal -->
+  <div id="confirmModal" class="fixed inset-0 hidden items-center justify-center bg-black bg-opacity-50 z-50">
+    <div class="bg-white text-black rounded p-6 w-full max-w-md">
+      <h3 class="font-semibold text-lg mb-3">Confirm mark paid</h3>
+      <p class="mb-4">Mark <span id="confirmCount">0</span> delivered orders as paid for <b id="confirmTel">—</b> ?</p>
+      <div class="flex justify-end gap-2">
+        <button id="confirmCancel" class="px-3 py-2 rounded border">Cancel</button>
+        <button id="confirmOk" class="px-3 py-2 rounded bg-green-600 text-white">Yes, mark paid</button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
+
+  <script>
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyB1wbJonjyJQDrPJWbMCVBtRolJH4HDskU",
+    authDomain: "shreejee-ayucare.firebaseapp.com",
+    databaseURL: "https://shreejee-ayucare-default-rtdb.firebaseio.com",
+    projectId: "shreejee-ayucare",
+    storageBucket: "shreejee-ayucare.firebasestorage.app",
+    messagingSenderId: "247248655859",
+    appId: "1:247248655859:web:b09bfc30ff6953aad42e86"
+  };
+
+  if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+  const db = firebase.database();
+
+  const telScroll = document.getElementById('telScroll');
+  const telSelect = document.getElementById('telSelect');
+  const deliveredCountEl = document.getElementById('deliveredCount');
+  const fromDateEl = document.getElementById('fromDate');
+  const toDateEl = document.getElementById('toDate');
+  const listSection = document.getElementById('listSection');
+  const btnPaid = document.getElementById('btnPaid');
+  const showPaidToggle = document.getElementById('showPaidToggle');
+  const qSearch = document.getElementById('qSearch');
+  const noData = document.getElementById('noData');
+  const selectedTelTop = document.getElementById('selectedTelTop');
+
+  const confirmModal = document.getElementById('confirmModal');
+  const confirmCount = document.getElementById('confirmCount');
+  const confirmTel = document.getElementById('confirmTel');
+  const confirmCancel = document.getElementById('confirmCancel');
+  const confirmOk = document.getElementById('confirmOk');
+
+  let ordersSnapshot = {};
+  let tellicallers = new Set();
+  let selectedTel = "__all__";
+
+  const currentUser = JSON.parse(localStorage.getItem('currentTellicaller') || "{}");
+
+  function humanDate(ts){ return ts ? new Date(ts).toLocaleString() : ""; }
+  function dateStartOf(v){ return v ? new Date(v+"T00:00:00").getTime() : null; }
+  function dateEndOf(v){ return v ? new Date(v+"T23:59:59.999").getTime() : null; }
+
+  function updateSelectedTelTop(){
+    selectedTelTop.textContent = (selectedTel === "__all__") ? "All Tellicallers" : selectedTel;
+  }
+
+  const ordersRef = db.ref("oms_orders");
+  ordersRef.on("value", snap => {
+    ordersSnapshot = snap.val() || {};
+    buildTellicallers();
+    render();
+  });
+
+  function buildTellicallers(){
+    tellicallers.clear();
+    Object.values(ordersSnapshot).forEach(o => {
+      if (o.tellicaller) tellicallers.add(o.tellicaller);
+    });
+
+    telScroll.innerHTML = "";
+    telSelect.innerHTML = `<option value="__all__">— All Tellicallers —</option>`;
+
+    [...tellicallers].sort().forEach(t => {
+      const chip = document.createElement("div");
+      chip.className = "tel-chip";
+      chip.textContent = t;
+      chip.onclick = () => selectTel(t);
+      telScroll.appendChild(chip);
+
+      const opt = document.createElement("option");
+      opt.value = t;
+      opt.textContent = t;
+      telSelect.appendChild(opt);
+    });
+
+    if (currentUser.name && tellicallers.has(currentUser.name) && selectedTel === "__all__"){
+      selectTel(currentUser.name);
+    }
+  }
+
+  function selectTel(t){
+    selectedTel = t;
+    updateSelectedTelTop();
+    telSelect.value = t;
+
+    [...telScroll.children].forEach(ch => {
+      ch.classList.toggle("active", ch.textContent === t);
+    });
+
+    render();
+  }
+
+  telSelect.onchange = e => selectTel(e.target.value);
+  fromDateEl.onchange = render;
+  toDateEl.onchange = render;
+  showPaidToggle.onchange = render;
+  qSearch.oninput = render;
+
+
+  function getFilteredDelivered(){
+    let list = Object.entries(ordersSnapshot)
+      .map(([id,o]) => ({...o, orderId:id}))
+      .filter(o => o.status === "closed" && o.closedType === "Delivered");
+
+    if (selectedTel !== "__all__"){
+      list = list.filter(o => o.tellicaller === selectedTel);
+    }
+
+    const from = dateStartOf(fromDateEl.value);
+    const to = dateEndOf(toDateEl.value);
+
+    if (from) list = list.filter(o => o.timestamp >= from);
+    if (to) list = list.filter(o => o.timestamp <= to);
+
+    const q = qSearch.value.toLowerCase();
+    if (q){
+      list = list.filter(o => {
+        const name = (o.firstName + " " + o.lastName).toLowerCase();
+        return (
+          name.includes(q) ||
+          (o.phone||"").includes(q) ||
+          (o.orderId||"").toLowerCase().includes(q)
+        );
+      });
+    }
+
+    if (!showPaidToggle.checked){
+      list = list.filter(o => !o.paid);
+    }
+
+    return list.sort((a,b) => b.timestamp - a.timestamp);
+  }
+
+  function render(){
+    const list = getFilteredDelivered();
+    deliveredCountEl.textContent = list.filter(o => !o.paid).length;
+
+    listSection.innerHTML = "";
+    noData.style.display = list.length ? "none" : "block";
+
+    const groups = {};
+    list.forEach(o => {
+      const d = new Date(o.timestamp).toDateString();
+      (groups[d] = groups[d] || []).push(o);
+    });
+
+    Object.keys(groups).sort((a,b)=> new Date(b) - new Date(a)).forEach(date => {
+      const sec = document.createElement("div");
+      sec.className = "glass rounded-xl p-4 mb-4";
+
+      sec.innerHTML = `<h3 class="font-semibold text-lg text-black mb-3">${date}</h3>`;
+
+      groups[date].forEach(o => {
+        const row = document.createElement("div");
+        row.className = "order-row bg-white/8 rounded p-3 flex justify-between items-center mb-2";
+
+        row.innerHTML = `
+          <div class="flex items-center gap-3">
+            <div class="font-semibold text-black">${o.firstName} ${o.lastName}</div>
+            <div class="small-muted">${o.phone}</div>
+            <div class="small-muted">₹${(o.amount||0)}</div>
+            <div class="small-muted">By: ${o.tellicaller}</div>
+          </div>
+          <div class="flex items-center gap-3">
+            <div class="small-muted">${humanDate(o.timestamp)}</div>
+            <button class="mark-paid px-3 py-1 bg-green-500 text-black rounded" data-id="${o.orderId}">
+              ${o.paid ? "Paid" : "Mark Paid"}
+            </button>
+          </div>
+        `;
+        sec.appendChild(row);
+      });
+
+      listSection.appendChild(sec);
+    });
+  }
+
+
+  listSection.onclick = async e => {
+    const btn = e.target.closest(".mark-paid");
+    if (!btn) return;
+
+    const id = btn.dataset.id;
+    if (!confirm("Mark this order as paid?")) return;
+
+    await ordersRef.child(id).update({
+      paid: true,
+      paidAt: Date.now(),
+      paidBy: currentUser.name || "admin"
+    });
+
+    render();
+  };
+
+
+  btnPaid.onclick = () => {
+    const list = getFilteredDelivered().filter(o => !o.paid);
+    if (!list.length) return alert("No visible unpaid delivered orders.");
+
+    confirmCount.textContent = list.length;
+    confirmTel.textContent = (selectedTel === "__all__") ? "All Tellicallers" : selectedTel;
+
+    confirmOk._ids = list.map(o => o.orderId);
+
+    confirmModal.style.display = "flex";
+  };
+
+  confirmCancel.onclick = () => {
+    confirmModal.style.display = "none";
+  };
+
+  confirmOk.onclick = async () => {
+    const ids = confirmOk._ids || [];
+
+    for (const id of ids){
+      await ordersRef.child(id).update({
+        paid: true,
+        paidAt: Date.now(),
+        paidBy: currentUser.name || "admin"
+      });
+    }
+
+    confirmModal.style.display = "none";
+    render();
+  };
+
+
+  updateSelectedTelTop();
+  render();
+
+  </script>
+</body>
+</html>

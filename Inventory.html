@@ -1,0 +1,88 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Inventory Management</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
+</head>
+<body class="bg-gray-100 min-h-screen">
+
+<nav class="bg-green-900 text-white p-4 flex justify-between items-center">
+  <div class="font-bold text-lg">ShreeJee Ayucare – Inventory</div>
+  <div class="flex gap-3">
+    <button onclick="location.href='Order-Management.html'" class="bg-yellow-500 px-4 py-2 rounded">Orders</button>
+    <button onclick="logout()" class="bg-red-500 px-4 py-2 rounded">Logout</button>
+  </div>
+</nav>
+
+<div class="max-w-5xl mx-auto p-6">
+  <div class="bg-white p-6 rounded shadow mb-6">
+    <h2 class="text-xl font-semibold mb-4">➕ Add / Update Stock</h2>
+    <div class="grid grid-cols-3 gap-4">
+      <select id="product" class="border p-2 rounded">
+        <option value="Karela Jamun Powder">Karela Jamun Powder</option>
+        <option value="Men Wellness">Men Wellness</option>
+      </select>
+      <input id="boxes" type="number" min="1" class="border p-2 rounded" placeholder="Boxes to Add">
+      <button onclick="addStock()" class="bg-green-600 text-white rounded px-4">Add Stock</button>
+    </div>
+  </div>
+
+  <div class="bg-white p-6 rounded shadow">
+    <h2 class="text-xl font-semibold mb-4">📦 Current Inventory</h2>
+    <table class="w-full border">
+      <thead class="bg-gray-200">
+        <tr>
+          <th class="border p-2">Product</th>
+          <th class="border p-2">Available Boxes</th>
+        </tr>
+      </thead>
+      <tbody id="inventoryTable"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyB1wbJonjyJQDrPJWbMCVBtRolJH4HDskU",
+  authDomain: "shreejee-ayucare.firebaseapp.com",
+  databaseURL: "https://shreejee-ayucare-default-rtdb.firebaseio.com",
+  projectId: "shreejee-ayucare"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+const inventoryRef = db.ref("inventory");
+
+function logout(){
+  localStorage.removeItem("currentTellicaller");
+  location.href="index.html";
+}
+
+function addStock(){
+  const product = document.getElementById("product").value;
+  const boxes = parseInt(document.getElementById("boxes").value);
+  if(!boxes || boxes <= 0) return alert("Enter valid box count");
+
+  inventoryRef.child(product).transaction(current => (current || 0) + boxes);
+  document.getElementById("boxes").value = "";
+}
+
+inventoryRef.on("value", snap => {
+  const data = snap.val() || {};
+  const tbody = document.getElementById("inventoryTable");
+  tbody.innerHTML = "";
+  Object.keys(data).forEach(p => {
+    tbody.innerHTML += `
+      <tr>
+        <td class="border p-2">${p}</td>
+        <td class="border p-2 font-semibold">${data[p]}</td>
+      </tr>`;
+  });
+});
+</script>
+
+</body>
+</html>
